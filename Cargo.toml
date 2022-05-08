@@ -10,7 +10,13 @@ build = "build.rs"
 [dependencies]
 glam = "0.20.5"
 
+ash = "0.37.0"
+ash-window = "0.10.0"
+
 winit = "0.26.1"
+
+thiserror = "1.0.31"
+anyhow = "1.0.56"
 
 log = "0.4.17"
 simple_logger = "1.16.0"

@@ -1,7 +1,10 @@
-use crate::window::{Window, WindowSettings};
+use std::{ffi::CString, rc::Rc};
+
+use crate::{window::{Window, WindowSettings}, vulkan::Device};
 
 pub struct App {
     window: Window,
+    device: Rc<Device>,
 }
 
 impl App {
@@ -11,11 +14,14 @@ impl App {
             WindowSettings::default(),
         );
 
+        let device = Device::new(CString::new("test").unwrap(), CString::new("test").unwrap(), window.inner()).unwrap();
+
         // window.set_cursor_icon(winit::window::CursorIcon::Grab);
         // window.set_cursor_position(glam::Vec2::new(200.0, 200.0));
 
         Self {
             window,
+            device,
         }
     }
 

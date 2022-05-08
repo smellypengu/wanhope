@@ -1,3 +1,4 @@
+mod vulkan;
 mod app;
 mod window;
 
