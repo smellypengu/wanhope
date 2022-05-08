@@ -1,0 +1,16 @@
+[package]
+name = "wanhope"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+glam = "0.20.5"
+
+winit = "0.26.1"
+
+log = "0.4.17"
+simple_logger = "1.16.0"
