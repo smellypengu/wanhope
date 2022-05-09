@@ -11,7 +11,7 @@ pub struct Swapchain {
     swapchain_image_format: ash::vk::Format,
     swapchain_depth_format: ash::vk::Format,
     pub swapchain_extent: ash::vk::Extent2D,
-    swapchain_images: Vec<ash::vk::Image>,
+    pub swapchain_images: Vec<ash::vk::Image>,
     swapchain_image_views: Vec<Rc<ImageView>>,
     pub swapchain_framebuffers: Vec<ash::vk::Framebuffer>,
     pub render_pass: ash::vk::RenderPass,

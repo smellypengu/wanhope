@@ -120,7 +120,7 @@ impl App {
         let alloc_info = ash::vk::CommandBufferAllocateInfo::builder()
             .level(ash::vk::CommandBufferLevel::PRIMARY)
             .command_pool(device.command_pool)
-            .command_buffer_count(MAX_FRAMES_IN_FLIGHT as u32);
+            .command_buffer_count(swapchain.swapchain_images.len() as u32);
 
         let command_buffers = unsafe {
             device.logical_device
@@ -171,14 +171,14 @@ impl App {
                     ash::vk::SubpassContents::INLINE,
                 );
 
-                let viewport = ash::vk::Viewport::builder()
-                    .x(0.0)
-                    .y(0.0)
-                    .width(swapchain.width() as f32)
-                    .height(swapchain.height() as f32)
-                    .min_depth(0.0)
-                    .max_depth(1.0)
-                    .build();
+                let viewport = ash::vk::Viewport {
+                    x: 0.0,
+                    y: 0.0,
+                    width: swapchain.width() as f32,
+                    height: swapchain.height() as f32,
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                };
 
                 let scissor = ash::vk::Rect2D {
                     offset: ash::vk::Offset2D { x: 0, y: 0 },
@@ -212,8 +212,6 @@ impl App {
 
         match result {
             Ok((image_index, _is_subopt)) => {
-                log::info!("{}", image_index);
-
                 self.swapchain.submit_command_buffers(
                     self.command_buffers[image_index as usize],
                     image_index as usize,
