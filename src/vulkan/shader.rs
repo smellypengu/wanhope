@@ -41,4 +41,19 @@ impl ShaderModule {
             .map_err(|e| log::error!("Unable to read file: {}", e))
             .unwrap()
     }
+
+    #[inline]
+    pub fn inner(&self) -> ash::vk::ShaderModule {
+        self.module
+    }
+}
+
+impl Drop for ShaderModule {
+    fn drop(&mut self) {
+        log::debug!("Dropping vulkan shader module");
+
+        unsafe {
+            self.device.logical_device.destroy_shader_module(self.module, None);
+        }
+    }
 }

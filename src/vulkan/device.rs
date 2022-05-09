@@ -22,15 +22,15 @@ impl QueueFamilyIndices {
 }
 
 pub struct Device {
-    instance: Instance,
+    pub instance: Instance,
     surface: ash::extensions::khr::Surface,
-    surface_khr: ash::vk::SurfaceKHR,
+    pub surface_khr: ash::vk::SurfaceKHR,
     physical_device: ash::vk::PhysicalDevice,
     properties: ash::vk::PhysicalDeviceProperties,
     pub logical_device: ash::Device,
-    command_pool: ash::vk::CommandPool,
-    graphics_queue: ash::vk::Queue,
-    present_queue: ash::vk::Queue,
+    pub command_pool: ash::vk::CommandPool,
+    pub graphics_queue: ash::vk::Queue,
+    pub present_queue: ash::vk::Queue,
 }
 
 impl Device {
@@ -111,6 +111,17 @@ impl Device {
         }
 
         memory_type
+    }
+
+    pub fn find_physical_queue_families(
+        &self
+    ) -> anyhow::Result<QueueFamilyIndices, RenderError> {
+        Ok(Self::find_queue_families(
+            &self.instance,
+            &self.surface,
+            self.surface_khr,
+            self.physical_device,
+        )?)
     }
 
     pub fn find_supported_format(
