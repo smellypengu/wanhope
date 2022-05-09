@@ -216,8 +216,6 @@ impl Swapchain {
 
         let extent = Self::choose_extent(&swapchain_support.capabilities, window_extent);
 
-        log::info!("{}", swapchain_support.capabilities.min_image_count);
-
         let mut image_count = swapchain_support.capabilities.min_image_count + 1;
 
         if swapchain_support.capabilities.max_image_count > 0

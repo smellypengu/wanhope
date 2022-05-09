@@ -1,6 +1,6 @@
 use std::{ffi::CString, rc::Rc};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Pipeline, Swapchain, MAX_FRAMES_IN_FLIGHT}};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Pipeline, Swapchain}};
 
 pub struct App {
     window: Window,
