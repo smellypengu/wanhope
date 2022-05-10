@@ -46,68 +46,58 @@ where
         })
     }
 
-    pub fn bind_vertex(&self, command_buffer: ash::vk::CommandBuffer) {
-        unsafe {
-            self.device.logical_device.cmd_bind_vertex_buffers(
-                command_buffer,
-                0,
-                &[self.buffer], 
-                &[0],
-            )
-        }
+    pub unsafe fn bind_vertex(&self, command_buffer: ash::vk::CommandBuffer) {
+        self.device.logical_device.cmd_bind_vertex_buffers(
+            command_buffer,
+            0,
+            &[self.buffer], 
+            &[0],
+        )
     }
 
-    pub fn bind_index(&self, command_buffer: ash::vk::CommandBuffer, index_type: ash::vk::IndexType) {
-        unsafe {
-            self.device.logical_device.cmd_bind_index_buffer(
-                command_buffer,
-                self.buffer,
-                0,
-                index_type,
-            )
-        }
+    pub unsafe fn bind_index(&self, command_buffer: ash::vk::CommandBuffer, index_type: ash::vk::IndexType) {
+        self.device.logical_device.cmd_bind_index_buffer(
+            command_buffer,
+            self.buffer,
+            0,
+            index_type,
+        )
     }
 
-    pub fn map(&mut self, element_offset: usize) -> anyhow::Result<(), RenderError> {
+    pub unsafe fn map(&mut self, element_offset: usize) -> anyhow::Result<(), RenderError> {
         let size = self.capacity - element_offset;
 
         let mem_size = (std::mem::size_of::<T>() * size) as u64;
         let mem_offset = (std::mem::size_of::<T>() * element_offset) as u64;
 
-        Ok(unsafe {
-            self.mapped = self.device.logical_device.map_memory(
-                self.memory,
-                mem_offset,
-                mem_size,
-                ash::vk::MemoryMapFlags::empty()
-            )?
-        })
+        Ok(self.mapped = self.device.logical_device.map_memory(
+            self.memory,
+            mem_offset,
+            mem_size,
+            ash::vk::MemoryMapFlags::empty()
+        )?)
     }
 
-    pub fn unmap(&mut self) {
+    pub unsafe fn unmap(&mut self) {
         if !self.mapped.is_null() {
-            unsafe {
-                self.device.logical_device.unmap_memory(self.memory);
-            }
+            self.device.logical_device.unmap_memory(self.memory);
 
             self.mapped = std::ptr::null_mut();
         }
     }
 
-    pub fn write_to_buffer(&mut self, elements: &[T]) {
+    pub unsafe fn write_to_buffer(&mut self, elements: &[T]) {
         assert!(
             !self.mapped.is_null(),
             "Cannot copy to unmapped buffer",
         );
 
-        unsafe {
-            elements
-                .as_ptr()
-                .copy_to_nonoverlapping(self.mapped as *mut _, elements.len());
-        }
+        elements
+            .as_ptr()
+            .copy_to_nonoverlapping(self.mapped as *mut _, elements.len());
     }
 
-    pub fn flush(&self) -> anyhow::Result<(), RenderError> {
+    pub unsafe fn flush(&self) -> anyhow::Result<(), RenderError> {
         if self.coherent {
             return Ok(());
         }
@@ -119,9 +109,7 @@ where
             ..Default::default()
         }];
 
-        Ok(unsafe {
-            self.device.logical_device.flush_mapped_memory_ranges(&mapped_range)?
-        })
+        Ok(self.device.logical_device.flush_mapped_memory_ranges(&mapped_range)?)
     }
 
     #[inline]

@@ -90,7 +90,8 @@ impl Model {
                 logical_device.cmd_draw(
                     command_buffer, 
                     self.vertex_count,
-                    1, 0,
+                    1,
+                    0,
                     0,
                 );
             }
@@ -128,8 +129,10 @@ impl Model {
             ash::vk::MemoryPropertyFlags::HOST_VISIBLE | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        staging_buffer.map(0)?;
-        staging_buffer.write_to_buffer(vertices);
+        unsafe {
+            staging_buffer.map(0)?;
+            staging_buffer.write_to_buffer(vertices);
+        }
 
         let vertex_buffer = Buffer::new(
             device.clone(),
@@ -158,8 +161,10 @@ impl Model {
             ash::vk::MemoryPropertyFlags::HOST_VISIBLE | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        staging_buffer.map(0)?;
-        staging_buffer.write_to_buffer(indices);
+        unsafe {
+            staging_buffer.map(0)?;
+            staging_buffer.write_to_buffer(indices);
+        }
 
         let index_buffer = Buffer::new(
             device.clone(),

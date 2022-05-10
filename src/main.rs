@@ -1,5 +1,6 @@
 mod vulkan;
 mod app;
+mod game_object;
 mod window;
 
 use crate::app::App;
