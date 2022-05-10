@@ -7,7 +7,7 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 pub struct Swapchain {
     device: Rc<Device>,
     swapchain: ash::extensions::khr::Swapchain,
-    swapchain_khr: Option<ash::vk::SwapchainKHR>,
+    pub swapchain_khr: Option<ash::vk::SwapchainKHR>,
     swapchain_image_format: ash::vk::Format,
     swapchain_depth_format: ash::vk::Format,
     pub swapchain_extent: ash::vk::Extent2D,
@@ -568,7 +568,7 @@ impl Swapchain {
 
 impl Drop for Swapchain {
     fn drop(&mut self) {
-        log::debug!("Dropping swapchain");
+        log::debug!("Dropping vulkan swapchain");
 
         unsafe {
             if let Some(swapchain_khr) = self.swapchain_khr {

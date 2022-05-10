@@ -42,7 +42,7 @@ impl ImageView {
 
 impl Drop for ImageView {
     fn drop(&mut self) {
-        log::debug!("Dropping image view");
+        log::debug!("Dropping vulkan image view");
 
         unsafe {
             self.device.logical_device.destroy_image_view(self.view, None);

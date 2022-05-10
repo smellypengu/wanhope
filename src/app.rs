@@ -1,6 +1,6 @@
 use std::{ffi::CString, rc::Rc};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Pipeline, Swapchain}};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Pipeline, Swapchain, Model, Vertex}};
 
 pub struct App {
     window: Window,
@@ -9,6 +9,8 @@ pub struct App {
     pipeline_layout: ash::vk::PipelineLayout,
     pipeline: Rc<Pipeline>,
     command_buffers: Vec<ash::vk::CommandBuffer>,
+
+    model: Rc<Model>,
 }
 
 impl App {
@@ -48,6 +50,8 @@ impl App {
         };
 
         let pipeline = Pipeline::start()
+            .binding_descriptions(Vertex::binding_descriptions())
+            .attribute_descriptions(Vertex::attribute_descriptions())
             .build(
                 device.clone(),
                 "shaders/simple_shader.vert.spv",
@@ -56,10 +60,13 @@ impl App {
                 &pipeline_layout,
             ).unwrap();
 
+        let model = Self::load_models(device.clone());
+
         let command_buffers = Self::create_command_buffers(
             &device, 
             &swapchain, 
-            &pipeline, 
+            &pipeline,
+            &model,
         );
 
         Self {
@@ -69,6 +76,8 @@ impl App {
             pipeline_layout,
             pipeline,
             command_buffers,
+
+            model,
         }
     }
 
@@ -111,11 +120,37 @@ impl App {
         });
     }
 
+    fn load_models(
+        device: Rc<Device>,
+    ) -> Rc<Model> {
+        let vertices = vec![
+            Vertex {
+                position: glam::vec2(0.0, -0.5),
+                color: glam::vec3(1.0, 0.0, 0.0),
+            },
+            Vertex {
+                position: glam::vec2(0.5, 0.5),
+                color: glam::vec3(0.0, 1.0, 0.0),
+            },
+            Vertex {
+                position: glam::vec2(-0.5, 0.5),
+                color: glam::vec3(0.0, 0.0, 1.0),
+            },
+        ];
+
+        Model::new(
+            device,
+            &vertices,
+            None,
+        ).unwrap()
+    }
+
     // temporary
     fn create_command_buffers(
         device: &Rc<Device>,
         swapchain: &Swapchain,
         pipeline: &Rc<Pipeline>,
+        model: &Rc<Model>,
     ) -> Vec<ash::vk::CommandBuffer> {
         let alloc_info = ash::vk::CommandBufferAllocateInfo::builder()
             .level(ash::vk::CommandBufferLevel::PRIMARY)
@@ -129,80 +164,113 @@ impl App {
                 .unwrap()
         };
 
-        for (i, command_buffer) in command_buffers.iter().enumerate() {
-            let begin_info = ash::vk::CommandBufferBeginInfo::builder();
+        command_buffers
+    }
 
-            unsafe {
-                device
-                    .logical_device
-                    .begin_command_buffer(*command_buffer, &begin_info)
-                    .map_err(|e| log::error!("Unable to begin command buffer: {}", e))
-                    .unwrap();
+    // temporary
+    fn record_command_buffers(&self, image_index: usize) {
+        let begin_info = ash::vk::CommandBufferBeginInfo::builder();
 
-                let render_area = ash::vk::Rect2D {
-                    offset: ash::vk::Offset2D { x: 0, y: 0 },
-                    extent: swapchain.swapchain_extent,
-                };
+        unsafe {
+            self.device
+                .logical_device
+                .begin_command_buffer(self.command_buffers[image_index], &begin_info)
+                .map_err(|e| log::error!("Unable to begin command buffer: {}", e))
+                .unwrap();
 
-                let color_clear = ash::vk::ClearValue {
-                    color: ash::vk::ClearColorValue {
-                        float32: [0.01, 0.01, 0.01, 1.0],
-                    },
-                };
-        
-                let depth_clear = ash::vk::ClearValue {
-                    depth_stencil: ash::vk::ClearDepthStencilValue {
-                        depth: 1.0,
-                        stencil: 0,
-                    },
-                };
-
-                let clear_values = [color_clear, depth_clear];
-
-                let render_pass_info = ash::vk::RenderPassBeginInfo::builder()
-                    .render_pass(swapchain.render_pass)
-                    .framebuffer(swapchain.swapchain_framebuffers[i])
-                    .render_area(render_area)
-                    .clear_values(&clear_values);
-
-                device.logical_device.cmd_begin_render_pass(
-                    *command_buffer,
-                    &render_pass_info,
-                    ash::vk::SubpassContents::INLINE,
-                );
-
-                let viewport = ash::vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: swapchain.width() as f32,
-                    height: swapchain.height() as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                };
-
-                let scissor = ash::vk::Rect2D {
-                    offset: ash::vk::Offset2D { x: 0, y: 0 },
-                    extent: swapchain.swapchain_extent,
-                };
-
-                device
-                    .logical_device
-                    .cmd_set_viewport(*command_buffer, 0, &[viewport]);
-                device
-                    .logical_device
-                    .cmd_set_scissor(*command_buffer, 0, &[scissor]);
-
-                pipeline.bind(*command_buffer);
-
-                device.logical_device.cmd_draw(*command_buffer, 3, 1, 0, 0);
-
-                device.logical_device.cmd_end_render_pass(*command_buffer);
-
-                device.logical_device.end_command_buffer(*command_buffer).unwrap();
+            let render_area = ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: self.swapchain.swapchain_extent,
             };
+
+            let color_clear = ash::vk::ClearValue {
+                color: ash::vk::ClearColorValue {
+                    float32: [0.01, 0.01, 0.01, 1.0],
+                },
+            };
+    
+            let depth_clear = ash::vk::ClearValue {
+                depth_stencil: ash::vk::ClearDepthStencilValue {
+                    depth: 1.0,
+                    stencil: 0,
+                },
+            };
+
+            let clear_values = [color_clear, depth_clear];
+
+            let render_pass_info = ash::vk::RenderPassBeginInfo::builder()
+                .render_pass(self.swapchain.render_pass)
+                .framebuffer(self.swapchain.swapchain_framebuffers[image_index])
+                .render_area(render_area)
+                .clear_values(&clear_values);
+
+            self.device.logical_device.cmd_begin_render_pass(
+                self.command_buffers[image_index],
+                &render_pass_info,
+                ash::vk::SubpassContents::INLINE,
+            );
+
+            let viewport = ash::vk::Viewport {
+                x: 0.0,
+                y: 0.0,
+                width: self.swapchain.width() as f32,
+                height: self.swapchain.height() as f32,
+                min_depth: 0.0,
+                max_depth: 1.0,
+            };
+
+            let scissor = ash::vk::Rect2D {
+                offset: ash::vk::Offset2D { x: 0, y: 0 },
+                extent: self.swapchain.swapchain_extent,
+            };
+
+            self.device
+                .logical_device
+                .cmd_set_viewport(self.command_buffers[image_index], 0, &[viewport]);
+            self.device
+                .logical_device
+                .cmd_set_scissor(self.command_buffers[image_index], 0, &[scissor]);
+
+            self.pipeline.bind(self.command_buffers[image_index]);
+            self.model.bind(self.command_buffers[image_index]);
+            self.model.draw(&self.device.logical_device, self.command_buffers[image_index]);
+
+            self.device.logical_device.cmd_end_render_pass(self.command_buffers[image_index]);
+
+            self.device.logical_device.end_command_buffer(self.command_buffers[image_index]).unwrap();
+        };
+    }
+
+    fn recreate_swapchain(&mut self) {
+        let window_extent = ash::vk::Extent2D {
+            width: self.window.inner().inner_size().width,
+            height: self.window.inner().inner_size().height,
+        };
+
+        if window_extent.width == 0 || window_extent.height == 0 {
+            return; // Don't do anything if the window is minimized
         }
 
-        command_buffers
+        log::debug!("Recreating vulkan swapchain");
+
+        unsafe {
+            self.device
+                .logical_device
+                .device_wait_idle().unwrap()
+        };
+
+        let new_swapchain = Swapchain::new(
+            self.device.clone(),
+            window_extent,
+            self.swapchain.swapchain_khr,
+        ).unwrap();
+
+        self.swapchain
+            .compare_swap_formats(&new_swapchain)
+            .map_err(|_| log::error!("Swapchain image or depth format has changed"))
+            .unwrap();
+
+        self.swapchain = new_swapchain;
     }
 
     pub fn render(&mut self) {
@@ -212,6 +280,13 @@ impl App {
 
         match result {
             Ok((image_index, _is_subopt)) => {
+                // if is_subopt {
+                //     log::warn!("Vulkan swapchain is suboptimal for surface");
+                //     self.recreate_swapchain();
+                // }
+
+                self.record_command_buffers(image_index as usize);
+
                 self.swapchain.submit_command_buffers(
                     self.command_buffers[image_index as usize],
                     image_index as usize,
@@ -219,6 +294,8 @@ impl App {
             },
             Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => {
                 log::error!("Out of date KHR");
+                self.recreate_swapchain();
+                return;
             }
             Err(_) => {
                 log::error!("Failed to acquire next image");
@@ -227,8 +304,8 @@ impl App {
         }
     }
 
-    pub fn resize(&self) {
-
+    pub fn resize(&mut self) {
+        self.recreate_swapchain();
     }
 }
 
