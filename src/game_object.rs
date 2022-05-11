@@ -10,8 +10,7 @@ pub struct TransformComponent {
 
 impl TransformComponent {
     pub fn mat4(&self) -> glam::Mat4 {
-        // could be wrong but at least it's rotating
-        let quat = glam::Quat::from_scaled_axis(self.rotation);
+        let quat = glam::Quat::from_euler(glam::EulerRot::XYZ, self.rotation.x, self.rotation.y, self.rotation.z);
 
         glam::Mat4::from_scale_rotation_translation(self.scale, quat, self.translation)
     }
