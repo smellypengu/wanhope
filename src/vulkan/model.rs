@@ -4,7 +4,7 @@ use super::{RenderError, Device, Buffer};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Vertex {
-    pub position: glam::Vec2,
+    pub position: glam::Vec3,
     pub color: glam::Vec3,
 }
 
@@ -26,14 +26,14 @@ impl Vertex {
             ash::vk::VertexInputAttributeDescription {
                 location: 0,
                 binding: 0,
-                format: ash::vk::Format::R32G32_SFLOAT,
+                format: ash::vk::Format::R32G32B32_SFLOAT,
                 offset: 0,
             },
             ash::vk::VertexInputAttributeDescription {
                 location: 1,
                 binding: 0,
                 format: ash::vk::Format::R32G32B32_SFLOAT,
-                offset: std::mem::size_of::<glam::Vec2>() as u32,
+                offset: std::mem::size_of::<glam::Vec3>() as u32,
             },
         ]
     }
@@ -72,6 +72,54 @@ impl Model {
             vertex_count,
             indices: None,
         }))
+    }
+
+    pub fn from_file(device: Rc<Device>, file_path: &str) -> anyhow::Result<Rc<Self>, RenderError> {
+        let (models, _) = tobj::load_obj(
+            file_path,
+            &tobj::GPU_LOAD_OPTIONS,
+        ).unwrap();
+
+        let mesh = &models[0].mesh;
+
+        let positions = mesh.positions.as_slice();
+
+        let colors = match mesh.vertex_color.as_slice() {
+            [] => vec![1_f32; positions.len()],
+            v => v.to_vec(),  
+        };
+
+        let normals = mesh.normals.as_slice();
+        let uvs = mesh.texcoords.as_slice();
+
+        let vertex_count = mesh.positions.len() / 3;
+
+        let mut vertices = Vec::with_capacity(vertex_count);
+        for i in 0..vertex_count {
+            let x = positions[3 * i + 0];
+            let y = positions[3 * i + 1];
+            let z = positions[3 * i + 2];
+
+            let color_x = colors[3 * i + 0];
+            let color_y = colors[3 * i + 1];
+            let color_z = colors[3 * i + 2];
+
+            let normal_x = normals[3 * i + 0];
+            let normal_y = normals[3 * i + 1];
+            let normal_z = normals[3 * i + 2];
+
+            let u = uvs[2 * i + 0];
+            let v = uvs[2 * i + 1];
+
+            let vertex = Vertex {
+                position: glam::vec3(x, y, z),
+                color: glam::vec3(color_x, color_y, color_z),
+            };
+
+            vertices.push(vertex);
+        }
+
+        Ok(Model::new(device, &vertices, Some(&mesh.indices.clone()))?)
     }
 
     pub unsafe fn draw(&self, logical_device: &ash::Device, command_buffer: ash::vk::CommandBuffer) {

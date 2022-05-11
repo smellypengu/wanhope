@@ -246,14 +246,12 @@ impl Pipeline {
         PipelineBuilder::start()
     }
 
-    pub fn bind(&self, command_buffer: ash::vk::CommandBuffer) {
-        unsafe {
-            self.device.logical_device.cmd_bind_pipeline(
-                command_buffer,
-                ash::vk::PipelineBindPoint::GRAPHICS,
-                self.graphics_pipeline,
-            );
-        }
+    pub unsafe fn bind(&self, command_buffer: ash::vk::CommandBuffer) {
+        self.device.logical_device.cmd_bind_pipeline(
+            command_buffer,
+            ash::vk::PipelineBindPoint::GRAPHICS,
+            self.graphics_pipeline,
+        );
     }
 }
 

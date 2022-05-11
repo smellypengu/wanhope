@@ -3,12 +3,17 @@ use std::rc::Rc;
 use crate::vulkan::Model;
 
 pub struct TransformComponent {
-    pub translation: glam::Vec2,
+    pub translation: glam::Vec3,
+    pub scale: glam::Vec3,
+    pub rotation: glam::Vec3,
 }
 
 impl TransformComponent {
-    pub fn mat2(&self) -> glam::Mat2 {
-        glam::Mat2::IDENTITY
+    pub fn mat4(&self) -> glam::Mat4 {
+        // could be wrong but at least it's rotating
+        let quat = glam::Quat::from_scaled_axis(self.rotation);
+
+        glam::Mat4::from_scale_rotation_translation(self.scale, quat, self.translation)
     }
 }
 
@@ -32,7 +37,9 @@ impl GameObject {
         let transform = match transform {
             Some(t) => t,
             None => TransformComponent {
-                translation: glam::vec2(0.0, 0.0),
+                translation: glam::Vec3::ZERO,
+                scale: glam::Vec3::ONE,
+                rotation: glam::Vec3::ZERO,
             }
         };
 

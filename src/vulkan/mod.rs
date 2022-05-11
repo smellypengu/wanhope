@@ -6,7 +6,6 @@ mod model;
 mod pipeline;
 mod renderer;
 mod shader;
-mod simple_render_system;
 mod swapchain;
 
 pub use buffer::*;
@@ -17,7 +16,6 @@ pub use model::*;
 pub use pipeline::*;
 pub use renderer::*;
 pub use shader::*;
-pub use simple_render_system::*;
 pub use swapchain::*;
 
 #[repr(align(16))]

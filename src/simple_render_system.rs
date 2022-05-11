@@ -1,15 +1,12 @@
 use std::rc::Rc;
 
-use crate::{game_object::GameObject, vulkan::Vertex};
-
-use super::{Pipeline, Device, RenderError, Align16};
+use crate::{game_object::GameObject, vulkan::{Vertex, Align16, Device, Pipeline, RenderError}, camera::Camera};
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct SimplePushConstantData {
-    transform: glam::Mat2,
-    offset: glam::Vec2,
-    color: Align16<glam::Vec3>,
+    transform: glam::Mat4,
+    color: glam::Vec3,
 }
 
 impl SimplePushConstantData {
@@ -90,18 +87,27 @@ impl SimpleRenderSystem {
         })
     }
 
-    pub fn render_game_objects(&self, command_buffer: ash::vk::CommandBuffer, game_objects: &Vec<GameObject>) {
+    pub fn render_game_objects(
+        &self,
+        command_buffer: ash::vk::CommandBuffer,
+        game_objects: &mut Vec<GameObject>,
+        camera: &Camera,
+    ) {
         unsafe {
             self.pipeline.bind(command_buffer);
         }
 
-        for obj in game_objects {
+        let projection_view = camera.projection_matrix * camera.view_matrix;
+
+        for obj in game_objects.iter_mut() {
             match &obj.model {
                 Some(model) => {
+                    obj.transform.rotation.x += 0.005 % 2.0 * std::f32::consts::PI;
+                    obj.transform.rotation.y += 0.01 % 2.0 * std::f32::consts::PI;
+
                     let push = SimplePushConstantData {
-                        transform: obj.transform.mat2(),
-                        offset: obj.transform.translation,
-                        color: Align16(obj.color),
+                        transform: projection_view * obj.transform.mat4(),
+                        color: obj.color,
                     };
     
                     unsafe {

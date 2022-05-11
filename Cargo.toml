@@ -10,6 +10,8 @@ build = "build.rs"
 [dependencies]
 glam = "0.20.5"
 
+tobj = "3.2.2"
+
 ash = "0.37.0"
 ash-window = "0.10.0"
 

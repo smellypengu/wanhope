@@ -1,6 +1,8 @@
 mod vulkan;
 mod app;
+mod camera;
 mod game_object;
+mod simple_render_system;
 mod window;
 
 use crate::app::App;

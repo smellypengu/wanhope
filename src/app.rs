@@ -1,6 +1,6 @@
 use std::{ffi::CString, rc::Rc};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Vertex, Align16, Renderer, SimpleRenderSystem}, game_object::{GameObject, TransformComponent}};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer}, game_object::{GameObject, TransformComponent}, simple_render_system::SimpleRenderSystem, camera::Camera};
 
 pub struct App {
     window: Window,
@@ -29,17 +29,12 @@ impl App {
             window.inner()
         ).unwrap();
 
-        let window_extent = ash::vk::Extent2D {
-            width: window.inner().inner_size().width,
-            height: window.inner().inner_size().height,
-        };
-
-        let game_objects = Self::load_game_objects(device.clone());
-
         let renderer = Renderer::new(
             device.clone(),
             &window,
         ).unwrap();
+
+        let game_objects = Self::load_game_objects(device.clone());
 
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
@@ -69,7 +64,9 @@ impl App {
                             *control_flow = winit::event_loop::ControlFlow::Exit
                         }
                         winit::event::WindowEvent::Resized(size) => {
-                            app.resize();
+                            if size != app.window.inner().inner_size() {
+                                app.resize();
+                            }
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
                             let height = app.window.inner().inner_size().height;
@@ -100,42 +97,39 @@ impl App {
     fn load_game_objects(
         device: Rc<Device>,
     ) -> Vec<GameObject> {
-        let vertices = vec![
-            Vertex {
-                position: glam::vec2(0.0, -0.5),
-                color: glam::vec3(1.0, 0.0, 0.0),
-            },
-            Vertex {
-                position: glam::vec2(0.5, 0.5),
-                color: glam::vec3(0.0, 1.0, 0.0),
-            },
-            Vertex {
-                position: glam::vec2(-0.5, 0.5),
-                color: glam::vec3(0.0, 0.0, 1.0),
-            },
-        ];
-
-        let model = Model::new(
+        let model = Model::from_file(
             device,
-            &vertices,
-            None,
+            "models/colored_cube.obj",
         ).unwrap();
 
         let game_object = GameObject::new(
             Some(model),
-            Some(glam::vec3(0.1, 0.8, 0.1)),
-            Some(TransformComponent { translation: glam::vec2(0.2, 0.0) }),
+            None,
+            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::vec3(0.5, 0.5, 0.5), rotation: glam::Vec3::ZERO }),
         );
 
         vec![game_object]
     }
 
     pub fn render(&mut self) {
+        let aspect = self.renderer.swapchain.extent_aspect_ratio();
+
+        let camera = Camera::new()
+            .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 10.0)
+            .set_view_xyz(glam::vec3(0.0, 0.0, 0.0), glam::vec3(0.0, 0.0, 0.0))
+            .build();
+
+        let extent = Renderer::get_window_extent(&self.window);
+
+        if extent.width == 0 || extent.height == 0 {
+            return;
+        }
+
         match self.renderer.begin_frame(&self.window).unwrap() {
             Some(command_buffer) => {
                 self.renderer.begin_swapchain_render_pass(command_buffer);
 
-                self.simple_render_system.render_game_objects(command_buffer, &self.game_objects);
+                self.simple_render_system.render_game_objects(command_buffer, &mut self.game_objects, &camera);
 
                 self.renderer.end_swapchain_render_pass(command_buffer);
 
