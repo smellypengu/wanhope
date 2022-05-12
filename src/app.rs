@@ -1,12 +1,15 @@
-use std::{ffi::CString, rc::Rc};
+use std::{ffi::CString, rc::Rc, time::Instant};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer}, game_object::{GameObject, TransformComponent}, simple_render_system::SimpleRenderSystem, camera::Camera};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input};
 
 pub struct App {
     window: Window,
     device: Rc<Device>,
 
     renderer: Renderer,
+
+    viewer_object: GameObject,
+    camera_controller: KeyboardMovementController,
 
     game_objects: Vec<GameObject>,
 
@@ -34,6 +37,9 @@ impl App {
             &window,
         ).unwrap();
 
+        let viewer_object = GameObject::new(None, None, None);
+        let camera_controller = KeyboardMovementController::new(None, None);
+
         let game_objects = Self::load_game_objects(device.clone());
 
         let simple_render_system = SimpleRenderSystem::new(
@@ -47,6 +53,9 @@ impl App {
 
             renderer,
 
+            viewer_object,
+            camera_controller,
+
             game_objects,
 
             simple_render_system,
@@ -54,14 +63,21 @@ impl App {
     }
 
     pub fn run(mut app: App, event_loop: winit::event_loop::EventLoop<()>) {
+        let mut current_time = Instant::now();
+
+        let mut input = Input::new();
+
         event_loop.run(move |event, _, control_flow| {
             *control_flow = winit::event_loop::ControlFlow::Poll;
     
             match event {
                 winit::event::Event::WindowEvent { event, .. } => {
+                    input.update(&event);
+
                     match event {
                         winit::event::WindowEvent::CloseRequested => {
-                            *control_flow = winit::event_loop::ControlFlow::Exit
+                            *control_flow = winit::event_loop::ControlFlow::Exit;
+                            return;
                         }
                         winit::event::WindowEvent::Resized(size) => {
                             if size != app.window.inner().inner_size() {
@@ -87,7 +103,10 @@ impl App {
                     app.window.request_redraw();
                 }
                 winit::event::Event::RedrawRequested(_) => {
-                    app.render();
+                    let frame_time = current_time.elapsed().as_secs_f32();
+                    current_time = Instant::now();
+
+                    app.draw(&input, frame_time);
                 }
                 _ => ()
             }
@@ -111,12 +130,14 @@ impl App {
         vec![game_object]
     }
 
-    pub fn render(&mut self) {
+    pub fn draw(&mut self, input: &Input, frame_time: f32) {
+        self.camera_controller.move_in_plane_xz(input, frame_time, &mut self.viewer_object);
+
         let aspect = self.renderer.swapchain.extent_aspect_ratio();
 
         let camera = Camera::new()
             .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 10.0)
-            .set_view_xyz(glam::vec3(0.0, 0.0, 0.0), glam::vec3(0.0, 0.0, 0.0))
+            .set_view_xyz(self.viewer_object.transform.translation, self.viewer_object.transform.rotation)
             .build();
 
         let extent = Renderer::get_window_extent(&self.window);

@@ -102,9 +102,6 @@ impl SimpleRenderSystem {
         for obj in game_objects.iter_mut() {
             match &obj.model {
                 Some(model) => {
-                    obj.transform.rotation.x += 0.005 % 2.0 * std::f32::consts::PI;
-                    obj.transform.rotation.y += 0.01 % 2.0 * std::f32::consts::PI;
-
                     let push = SimplePushConstantData {
                         transform: projection_view * obj.transform.mat4(),
                         color: obj.color,
