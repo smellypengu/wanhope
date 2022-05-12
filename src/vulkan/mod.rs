@@ -1,3 +1,4 @@
+pub mod descriptor_set;
 mod buffer;
 mod device;
 mod image_view;

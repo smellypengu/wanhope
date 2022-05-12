@@ -1,12 +1,12 @@
 use glam::Vec4Swizzles;
 
-pub struct Camera {
+pub struct CameraBuilder {
     pub projection_matrix: glam::Mat4,
     pub view_matrix: glam::Mat4,
     pub inverse_view_matrix: glam::Mat4,
 }
 
-pub struct CameraBuilder {
+pub struct Camera {
     pub projection_matrix: glam::Mat4,
     pub view_matrix: glam::Mat4,
     pub inverse_view_matrix: glam::Mat4,

@@ -1,11 +1,11 @@
 use std::rc::Rc;
 
-use crate::{game_object::GameObject, vulkan::{Vertex, Align16, Device, Pipeline, RenderError}, camera::Camera, FrameInfo};
+use crate::{game_object::GameObject, vulkan::{Vertex, Device, Pipeline, RenderError}, FrameInfo};
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct SimplePushConstantData {
-    transform: glam::Mat4,
+    model_matrix: glam::Mat4,
     normal_matrix: glam::Mat4,
 }
 
@@ -28,9 +28,11 @@ impl SimpleRenderSystem {
     pub fn new(
         device: Rc<Device>,
         render_pass: &ash::vk::RenderPass,
+        set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<Self, RenderError> {
         let pipeline_layout = Self::create_pipeline_layout(
             &device.logical_device,
+            set_layouts,
         )?;
 
         let pipeline = Self::create_pipeline(
@@ -72,6 +74,7 @@ impl SimpleRenderSystem {
 
     fn create_pipeline_layout(
         logical_device: &ash::Device,
+        set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<ash::vk::PipelineLayout, RenderError> {
         let push_constant_range = [ash::vk::PushConstantRange {
             stage_flags: ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
@@ -80,6 +83,7 @@ impl SimpleRenderSystem {
         }];
 
         let pipeline_layout_info = ash::vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(set_layouts)
             .push_constant_ranges(&push_constant_range);
 
         Ok(unsafe {
@@ -90,15 +94,22 @@ impl SimpleRenderSystem {
     pub fn render_game_objects(&self, frame_info: FrameInfo, game_objects: &mut Vec<GameObject>) {
         unsafe {
             self.pipeline.bind(frame_info.command_buffer);
-        }
 
-        let projection_view = frame_info.camera.projection_matrix * frame_info.camera.view_matrix;
+            self.device.logical_device.cmd_bind_descriptor_sets(
+                frame_info.command_buffer,
+                ash::vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline_layout,
+                0,
+                &[frame_info.global_descriptor_set],
+                &[],
+            );
+        }
 
         for obj in game_objects.iter_mut() {
             match &obj.model {
                 Some(model) => {
                     let push = SimplePushConstantData {
-                        transform: projection_view * obj.transform.mat4(),
+                        model_matrix: obj.transform.mat4(),
                         normal_matrix: obj.transform.normal_matrix(),
                     };
     

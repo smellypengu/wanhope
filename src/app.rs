@@ -1,6 +1,6 @@
 use std::{ffi::CString, rc::Rc, time::Instant};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
 
 #[derive(PartialEq)]
 #[repr(C)]
@@ -15,14 +15,20 @@ pub struct App {
 
     renderer: Renderer,
 
+    global_pool: Rc<DescriptorPool>,
+    global_set_layout: Rc<DescriptorSetLayout>,
+
     ubo_buffers: Vec<Buffer<GlobalUbo>>,
+
+    global_descriptor_sets: Vec<ash::vk::DescriptorSet>,
+
+    simple_render_system: SimpleRenderSystem,
 
     viewer_object: GameObject,
     camera_controller: KeyboardMovementController,
 
     game_objects: Vec<GameObject>,
 
-    simple_render_system: SimpleRenderSystem,
 }
 
 impl App {
@@ -46,6 +52,19 @@ impl App {
             &window,
         ).unwrap();
 
+        let global_pool = unsafe {
+            DescriptorPool::new(device.clone())
+                .max_sets(MAX_FRAMES_IN_FLIGHT as u32)
+                .pool_size(ash::vk::DescriptorType::UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT as u32)
+                .build().unwrap()
+        };
+
+        let global_set_layout = unsafe {
+            DescriptorSetLayout::new(renderer.device.clone())
+            .add_binding(0, ash::vk::DescriptorType::UNIFORM_BUFFER, ash::vk::ShaderStageFlags::ALL_GRAPHICS, 1)
+            .build().unwrap()
+        };
+
         let mut ubo_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             let mut buffer = Buffer::new(
@@ -62,6 +81,18 @@ impl App {
             ubo_buffers.push(buffer);
         }
 
+        let mut global_descriptor_sets = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        for i in 0..MAX_FRAMES_IN_FLIGHT {
+            let buffer_info = ubo_buffers[i].descriptor_info();
+            let set = unsafe {
+                DescriptorSetWriter::new(global_set_layout.clone(), global_pool.clone())
+                .write_to_buffer(0, &[buffer_info])
+                .build().unwrap()
+            };
+
+            global_descriptor_sets.push(set);
+        }
+
         let viewer_object = GameObject::new(None, None, None);
         let camera_controller = KeyboardMovementController::new(None, None);
 
@@ -69,7 +100,8 @@ impl App {
 
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
-            &renderer.swapchain.render_pass
+            &renderer.swapchain.render_pass,
+            &[global_set_layout.inner()],
         ).unwrap();
 
         Self {
@@ -78,14 +110,19 @@ impl App {
 
             renderer,
 
+            global_pool,
+            global_set_layout,
+            
             ubo_buffers,
+
+            global_descriptor_sets,
+
+            simple_render_system,
 
             viewer_object,
             camera_controller,
 
             game_objects,
-
-            simple_render_system,
         }
     }
 
@@ -193,6 +230,7 @@ impl App {
                     frame_time,
                     command_buffer,
                     camera,
+                    global_descriptor_set: self.global_descriptor_sets[frame_index],
                 };
 
                 //update
