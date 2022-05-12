@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use crate::{game_object::GameObject, vulkan::{Vertex, Align16, Device, Pipeline, RenderError}, camera::Camera};
+use crate::{game_object::GameObject, vulkan::{Vertex, Align16, Device, Pipeline, RenderError}, camera::Camera, FrameInfo};
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct SimplePushConstantData {
     transform: glam::Mat4,
-    color: glam::Vec3,
+    normal_matrix: glam::Mat4,
 }
 
 impl SimplePushConstantData {
@@ -87,39 +87,34 @@ impl SimpleRenderSystem {
         })
     }
 
-    pub fn render_game_objects(
-        &self,
-        command_buffer: ash::vk::CommandBuffer,
-        game_objects: &mut Vec<GameObject>,
-        camera: &Camera,
-    ) {
+    pub fn render_game_objects(&self, frame_info: FrameInfo, game_objects: &mut Vec<GameObject>) {
         unsafe {
-            self.pipeline.bind(command_buffer);
+            self.pipeline.bind(frame_info.command_buffer);
         }
 
-        let projection_view = camera.projection_matrix * camera.view_matrix;
+        let projection_view = frame_info.camera.projection_matrix * frame_info.camera.view_matrix;
 
         for obj in game_objects.iter_mut() {
             match &obj.model {
                 Some(model) => {
                     let push = SimplePushConstantData {
                         transform: projection_view * obj.transform.mat4(),
-                        color: obj.color,
+                        normal_matrix: obj.transform.normal_matrix(),
                     };
     
                     unsafe {
                         let push_ptr = push.as_bytes();
     
                         self.device.logical_device.cmd_push_constants(
-                            command_buffer,
+                            frame_info.command_buffer,
                             self.pipeline_layout,
                             ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
                             0,
                             push_ptr,
                         );
     
-                        model.bind(command_buffer);
-                        model.draw(&self.device.logical_device, command_buffer);
+                        model.bind(frame_info.command_buffer);
+                        model.draw(&self.device.logical_device, frame_info.command_buffer);
                     }
                 },
                 None => { },

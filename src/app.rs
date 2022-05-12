@@ -1,12 +1,21 @@
 use std::{ffi::CString, rc::Rc, time::Instant};
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input};
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
+
+#[derive(PartialEq)]
+#[repr(C)]
+pub struct GlobalUbo {
+    pub projection_view: glam::Mat4,
+    pub light_direction: glam::Vec3,
+}
 
 pub struct App {
     window: Window,
     device: Rc<Device>,
 
     renderer: Renderer,
+
+    ubo_buffers: Vec<Buffer<GlobalUbo>>,
 
     viewer_object: GameObject,
     camera_controller: KeyboardMovementController,
@@ -37,6 +46,22 @@ impl App {
             &window,
         ).unwrap();
 
+        let mut ubo_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
+        for _ in 0..MAX_FRAMES_IN_FLIGHT {
+            let mut buffer = Buffer::new(
+                renderer.device.clone(),
+                1,
+                ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
+                ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+            ).unwrap();
+
+            unsafe {
+                buffer.map(0).unwrap();
+            }
+
+            ubo_buffers.push(buffer);
+        }
+
         let viewer_object = GameObject::new(None, None, None);
         let camera_controller = KeyboardMovementController::new(None, None);
 
@@ -52,6 +77,8 @@ impl App {
             device,
 
             renderer,
+
+            ubo_buffers,
 
             viewer_object,
             camera_controller,
@@ -116,18 +143,29 @@ impl App {
     fn load_game_objects(
         device: Rc<Device>,
     ) -> Vec<GameObject> {
-        let model = Model::from_file(
-            device,
-            "models/colored_cube.obj",
+        let flat_vase_model = Model::from_file(
+            device.clone(),
+            "models/flat_vase.obj",
         ).unwrap();
 
-        let game_object = GameObject::new(
-            Some(model),
+        let flat_vase = GameObject::new(
+            Some(flat_vase_model),
             None,
-            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::vec3(0.5, 0.5, 0.5), rotation: glam::Vec3::ZERO }),
+            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
         );
 
-        vec![game_object]
+        let smooth_vase_model = Model::from_file(
+            device.clone(),
+            "models/smooth_vase.obj",
+        ).unwrap();
+
+        let smooth_vase = GameObject::new(
+            Some(smooth_vase_model),
+            None,
+            Some(TransformComponent { translation: glam::vec3(0.5, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+        );
+
+        vec![flat_vase, smooth_vase]
     }
 
     pub fn draw(&mut self, input: &Input, frame_time: f32) {
@@ -148,9 +186,32 @@ impl App {
 
         match self.renderer.begin_frame(&self.window).unwrap() {
             Some(command_buffer) => {
+                let frame_index = self.renderer.frame_index();
+
+                let frame_info = FrameInfo {
+                    frame_index,
+                    frame_time,
+                    command_buffer,
+                    camera,
+                };
+
+                //update
+
+                let ubo = GlobalUbo {
+                    projection_view: frame_info.camera.projection_matrix * frame_info.camera.view_matrix,
+                    light_direction: glam::vec3(1.0, -3.0, 1.0).normalize(),
+                };
+
+                unsafe {
+                    self.ubo_buffers[frame_index].write_to_buffer(&[ubo]);
+                    self.ubo_buffers[frame_index].flush().unwrap();
+                }
+
+                // render
+
                 self.renderer.begin_swapchain_render_pass(command_buffer);
 
-                self.simple_render_system.render_game_objects(command_buffer, &mut self.game_objects, &camera);
+                self.simple_render_system.render_game_objects(frame_info, &mut self.game_objects);
 
                 self.renderer.end_swapchain_render_pass(command_buffer);
 

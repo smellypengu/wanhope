@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, mem::size_of};
 
 use super::{RenderError, Device, Buffer};
 
@@ -6,6 +6,8 @@ use super::{RenderError, Device, Buffer};
 pub struct Vertex {
     pub position: glam::Vec3,
     pub color: glam::Vec3,
+    pub normal: glam::Vec3,
+    pub uv: glam::Vec2,
 }
 
 impl Vertex {
@@ -33,7 +35,19 @@ impl Vertex {
                 location: 1,
                 binding: 0,
                 format: ash::vk::Format::R32G32B32_SFLOAT,
-                offset: std::mem::size_of::<glam::Vec3>() as u32,
+                offset: size_of::<glam::Vec3>() as u32,
+            },
+            ash::vk::VertexInputAttributeDescription {
+                location: 2,
+                binding: 0,
+                format: ash::vk::Format::R32G32B32_SFLOAT,
+                offset: (size_of::<glam::Vec3>() + size_of::<glam::Vec3>()) as u32,
+            },
+            ash::vk::VertexInputAttributeDescription {
+                location: 3,
+                binding: 0,
+                format: ash::vk::Format::R32G32B32_SFLOAT,
+                offset: (size_of::<glam::Vec3>() + size_of::<glam::Vec3>() + size_of::<glam::Vec3>()) as u32,
             },
         ]
     }
@@ -114,12 +128,18 @@ impl Model {
             let vertex = Vertex {
                 position: glam::vec3(x, y, z),
                 color: glam::vec3(color_x, color_y, color_z),
+                normal: glam::vec3(normal_x, normal_y, normal_z),
+                uv: glam::vec2(u, v),
             };
 
             vertices.push(vertex);
         }
 
-        Ok(Model::new(device, &vertices, Some(&mesh.indices.clone()))?)
+        Ok(Model::new(
+            device,
+            &vertices,
+            Some(&mesh.indices.clone())
+        )?)
     }
 
     pub unsafe fn draw(&self, logical_device: &ash::Device, command_buffer: ash::vk::CommandBuffer) {

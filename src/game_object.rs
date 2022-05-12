@@ -14,6 +14,10 @@ impl TransformComponent {
 
         glam::Mat4::from_scale_rotation_translation(self.scale, quat, self.translation)
     }
+
+    pub fn normal_matrix(&self) -> glam::Mat4 {
+        glam::Mat4::from_scale(1.0 / self.scale) // mat4 instead of mat3 for alignment
+    }
 }
 
 pub struct GameObject {
