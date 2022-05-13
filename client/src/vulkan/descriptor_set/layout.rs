@@ -82,7 +82,7 @@ impl DescriptorSetLayout {
 
 impl Drop for DescriptorSetLayout {
     fn drop(&mut self) {
-        log::debug!("Dropping descriptor set layout");
+        log::debug!("Dropping vulkan descriptor set layout");
 
         unsafe {
             self.device.logical_device.destroy_descriptor_set_layout(self.layout, None);

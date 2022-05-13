@@ -114,7 +114,7 @@ impl DescriptorPool {
 
 impl Drop for DescriptorPool {
     fn drop(&mut self) {
-        log::debug!("Dropping descriptor pool");
+        log::debug!("Dropping vulkan descriptor pool");
 
         unsafe {
             self.device.logical_device.destroy_descriptor_pool(self.pool, None)

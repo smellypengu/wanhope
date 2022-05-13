@@ -1,0 +1,26 @@
+[package]
+name = "client"
+version = "0.1.0"
+license = "MIT"
+build = "build.rs"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+common = { path = "../common" }
+
+glam = "0.20.5"
+
+tobj = "3.2.2"
+
+ash = "0.37.0"
+ash-window = "0.10.0"
+
+winit = "0.26.1"
+
+thiserror = "1.0.31"
+anyhow = "1.0.56"
+
+log = "0.4.17"
+simple_logger = "1.16.0"

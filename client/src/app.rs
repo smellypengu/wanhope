@@ -1,4 +1,4 @@
-use std::{ffi::CString, rc::Rc, time::Instant};
+use std::{ffi::CString, rc::Rc, time::Instant, net::TcpStream, io::{Write, Read}};
 
 use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
 
@@ -29,6 +29,7 @@ pub struct App {
 
     game_objects: Vec<GameObject>,
 
+    stream: Option<TcpStream>,
 }
 
 impl App {
@@ -104,6 +105,9 @@ impl App {
             &[global_set_layout.inner()],
         ).unwrap();
 
+        let stream = TcpStream::connect("localhost:8080").ok();
+        println!("Connected to server in port 8080");
+
         Self {
             window,
             device,
@@ -123,6 +127,8 @@ impl App {
             camera_controller,
 
             game_objects,
+
+            stream,
         }
     }
 
@@ -160,10 +166,12 @@ impl App {
                         winit::event::WindowEvent::CursorLeft { .. } => {
                             app.window.physical_cursor_position = None;
                         }
-                        _ => ()
+                        _ => {}
                     }
                 }
                 winit::event::Event::MainEventsCleared => {
+                    app.update();
+
                     app.window.request_redraw();
                 }
                 winit::event::Event::RedrawRequested(_) => {
@@ -172,37 +180,38 @@ impl App {
 
                     app.draw(&input, frame_time);
                 }
-                _ => ()
+                _ => {}
             }
         });
     }
 
-    fn load_game_objects(
-        device: Rc<Device>,
-    ) -> Vec<GameObject> {
-        let flat_vase_model = Model::from_file(
-            device.clone(),
-            "models/flat_vase.obj",
-        ).unwrap();
+    pub fn update(&self) {
+        if self.stream.is_some() {
+            let mut stream = self.stream.as_ref().unwrap();
 
-        let flat_vase = GameObject::new(
-            Some(flat_vase_model),
-            None,
-            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
-        );
-
-        let smooth_vase_model = Model::from_file(
-            device.clone(),
-            "models/smooth_vase.obj",
-        ).unwrap();
-
-        let smooth_vase = GameObject::new(
-            Some(smooth_vase_model),
-            None,
-            Some(TransformComponent { translation: glam::vec3(0.5, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
-        );
-
-        vec![flat_vase, smooth_vase]
+            let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
+            let msg = common::serialize(&test_struct).unwrap();
+    
+            stream.write(&msg).unwrap();
+            println!("Sent struct, awaiting reply...");
+    
+            let mut data = [0 as u8; 32];
+            match stream.read(&mut data) {
+                Ok(_) => {
+                    let response: common::TestStruct = common::deserialize(&data).unwrap();
+    
+                    if response == test_struct {
+                        println!("Reply is matching");
+                    } else {
+                        let text = std::str::from_utf8(&data).unwrap();
+                        println!("Unexpected reply: {}", text);
+                    }
+                },
+                Err(e) => {
+                    println!("Failed to receive data: {}", e);
+                }
+            }
+        }
     }
 
     pub fn draw(&mut self, input: &Input, frame_time: f32) {
@@ -261,5 +270,33 @@ impl App {
 
     pub fn resize(&mut self) {
         self.renderer.recreate_swapchain(&self.window).unwrap();
+    }
+
+    fn load_game_objects(
+        device: Rc<Device>,
+    ) -> Vec<GameObject> {
+        let flat_vase_model = Model::from_file(
+            device.clone(),
+            "client/models/flat_vase.obj", // needs fixing for release mode
+        ).unwrap();
+
+        let flat_vase = GameObject::new(
+            Some(flat_vase_model),
+            None,
+            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+        );
+
+        let smooth_vase_model = Model::from_file(
+            device.clone(),
+            "client/models/smooth_vase.obj", // needs fixing for release mode
+        ).unwrap();
+
+        let smooth_vase = GameObject::new(
+            Some(smooth_vase_model),
+            None,
+            Some(TransformComponent { translation: glam::vec3(0.5, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+        );
+
+        vec![flat_vase, smooth_vase]
     }
 }
