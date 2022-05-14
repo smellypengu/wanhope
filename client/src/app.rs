@@ -1,4 +1,4 @@
-use std::{ffi::CString, rc::Rc, time::Instant, net::TcpStream, io::{Write, Read}};
+use std::{ffi::CString, rc::Rc, time::Instant, net::{TcpStream, UdpSocket, SocketAddr}, io::{Write, Read, self}};
 
 use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
 
@@ -29,7 +29,7 @@ pub struct App {
 
     game_objects: Vec<GameObject>,
 
-    stream: Option<TcpStream>,
+    socket: Option<UdpSocket>,
 }
 
 impl App {
@@ -105,9 +105,6 @@ impl App {
             &[global_set_layout.inner()],
         ).unwrap();
 
-        let stream = TcpStream::connect("localhost:8080").ok();
-        println!("Connected to server in port 8080");
-
         Self {
             window,
             device,
@@ -128,7 +125,7 @@ impl App {
 
             game_objects,
 
-            stream,
+            socket: None,
         }
     }
 
@@ -153,6 +150,14 @@ impl App {
                             if size != app.window.inner().inner_size() {
                                 app.resize();
                             }
+                        }
+                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
+                            match input.virtual_keycode {
+                                Some(winit::event::VirtualKeyCode::C) => {
+                                    app.connect();
+                                }
+                                _ => {}
+                            };
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
                             let height = app.window.inner().inner_size().height;
@@ -185,32 +190,64 @@ impl App {
         });
     }
 
-    pub fn update(&self) {
-        if self.stream.is_some() {
-            let mut stream = self.stream.as_ref().unwrap();
+    pub fn connect(&mut self) {
+        if self.socket.is_none() {
+            let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 
-            let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
-            let msg = common::serialize(&test_struct).unwrap();
-    
-            stream.write(&msg).unwrap();
-            println!("Sent struct, awaiting reply...");
-    
-            let mut data = [0 as u8; 32];
-            match stream.read(&mut data) {
-                Ok(_) => {
-                    let response: common::TestStruct = common::deserialize(&data).unwrap();
-    
-                    if response == test_struct {
-                        println!("Reply is matching");
+            let local_addr: SocketAddr = if remote_addr.is_ipv4() {
+                "0.0.0.0:0"
+            } else {
+                "[::]:0"
+            }
+            .parse().unwrap();
+
+            self.socket = Some(UdpSocket::bind(local_addr).unwrap());
+
+            // register as user in server
+
+            let socket = self.socket.as_ref().unwrap();
+
+            socket.connect(remote_addr).unwrap();
+
+            socket.send(&[common::ClientMessage::Join as u8]).unwrap();
+
+            let mut response = vec![0u8; 2];
+            let len = socket.recv(&mut response).unwrap();
+
+            let join_result = common::ServerMessage::try_from(response[0]).unwrap();
+
+            match join_result {
+                common::ServerMessage::JoinResult => {
+                    if len > 1 as usize {
+                        println!("user id: {}", response[1]);
                     } else {
-                        let text = std::str::from_utf8(&data).unwrap();
-                        println!("Unexpected reply: {}", text);
+                        println!("server did not let us in");
                     }
                 },
-                Err(e) => {
-                    println!("Failed to receive data: {}", e);
-                }
             }
+        }
+    }
+
+    pub fn update(&self) {
+        match &self.socket {
+            Some(socket) => {
+                // let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
+                // let msg = common::serialize(&test_struct).unwrap();
+
+                // socket.send(&msg).unwrap();
+                // let mut data = vec![0u8; 1_000];
+                // let len = socket.recv(&mut data).unwrap();
+
+                // let deserialized: common::TestStruct = common::deserialize(&data[..len]).unwrap();
+
+                // println!(
+                //     "Received {} bytes:\n{:?}",
+                //     len,
+                //     deserialized,
+                // );
+
+            },
+            None => {},
         }
     }
 

@@ -1,21 +1,53 @@
-use serde::{Serialize, Deserialize};
+// use serde::{Serialize, Deserialize};
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
-pub struct TestStruct {
-    pub x: u8,
-    pub abc: String,
+pub enum ClientMessage {
+    Join,
+    Leave,
 }
 
-pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
-where
-    T: ?Sized + Serialize,
-{
-    bincode::serialize(&value)
+impl TryFrom<u8> for ClientMessage {
+    type Error = ();
+
+    fn try_from(val: u8) -> Result<Self, ()> {
+        match val {
+            0 => Ok(ClientMessage::Join),
+            1 => Ok(ClientMessage::Leave),
+            _ => Err(()),
+        }
+    }
 }
 
-pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, bincode::Error>
-where
-    T: Deserialize<'a>,
-{
-    bincode::deserialize(&bytes)
+pub enum ServerMessage {
+    JoinResult,
 }
+
+impl TryFrom<u8> for ServerMessage {
+    type Error = ();
+
+    fn try_from(val: u8) -> Result<Self, ()> {
+        match val {
+            0 => Ok(ServerMessage::JoinResult),
+            _ => Err(()),
+        }
+    }
+}
+
+// #[derive(Serialize, Deserialize, PartialEq, Debug)]
+// pub struct TestStruct {
+//     pub x: u8,
+//     pub abc: String,
+// }
+
+// pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
+// where
+//     T: ?Sized + Serialize,
+// {
+//     bincode::serialize(&value)
+// }
+
+// pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, bincode::Error>
+// where
+//     T: Deserialize<'a>,
+// {
+//     bincode::deserialize(&bytes)
+// }

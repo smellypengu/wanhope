@@ -34,7 +34,7 @@ impl Input {
     pub fn update(&mut self, event: &winit::event::WindowEvent) {
         match event {
             winit::event::WindowEvent::KeyboardInput { input, .. } => self.update_key(input),
-            _ => (),
+            _ => {},
         }
     }
 }
