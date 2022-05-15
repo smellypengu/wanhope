@@ -1,4 +1,6 @@
-use std::{ffi::CString, rc::Rc, time::Instant, net::{TcpStream, UdpSocket, SocketAddr}, io::{Write, Read, self}};
+use std::{ffi::CString, rc::Rc, time::Instant, net::{UdpSocket, SocketAddr}};
+
+use rand::Rng;
 
 use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
 
@@ -157,7 +159,7 @@ impl App {
                                     app.connect();
                                 }
                                 _ => {}
-                            };
+                            }
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
                             let height = app.window.inner().inner_size().height;
@@ -205,12 +207,11 @@ impl App {
 
             // register as user in server
 
-            let socket = self.socket.as_ref().unwrap();
-
+            let socket = self.socket.as_ref().unwrap();            
             socket.connect(remote_addr).unwrap();
-
+            
             socket.send(&[common::ClientMessage::Join as u8]).unwrap();
-
+            
             let mut response = vec![0u8; 2];
             let len = socket.recv(&mut response).unwrap();
 
@@ -223,14 +224,36 @@ impl App {
                     } else {
                         println!("server did not let us in");
                     }
-                },
+                }
+                _ => {}
             }
         }
     }
 
-    pub fn update(&self) {
+    pub fn update(&mut self) {
         match &self.socket {
             Some(socket) => {
+                let mut data = vec![0u8; 1_024];
+
+                // set to nonblocking so recv() call doesn't freeze app, probably temporary.
+                socket.set_nonblocking(true).unwrap();
+
+                match socket.recv(&mut data) {
+                    Ok(len) => {
+                        let server_message = common::ServerMessage::try_from(data[0]).unwrap();
+        
+                        match server_message {
+                            common::ServerMessage::ClientJoining => {
+                                println!("a new client joined the server!");
+
+                                self.spawn_game_object();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Err(_) => {}
+                }
+
                 // let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
                 // let msg = common::serialize(&test_struct).unwrap();
 
@@ -249,6 +272,25 @@ impl App {
             },
             None => {},
         }
+    }
+
+    pub fn spawn_game_object(&mut self) {
+        // shouldn't be loading new model each time, temporary.
+        let flat_vase_model = Model::from_file(
+            self.device.clone(),
+            "client/models/flat_vase.obj", // needs fixing for release mode.
+        ).unwrap();
+
+        let mut rng = rand::thread_rng();
+
+        // random is temporary.
+        let flat_vase = GameObject::new(
+            Some(flat_vase_model),
+            None,
+            Some(TransformComponent { translation: glam::vec3(rng.gen_range(-10..10) as f32, 0.0, rng.gen_range(-10..10) as f32), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+        );
+
+        self.game_objects.push(flat_vase);
     }
 
     pub fn draw(&mut self, input: &Input, frame_time: f32) {
@@ -314,7 +356,7 @@ impl App {
     ) -> Vec<GameObject> {
         let flat_vase_model = Model::from_file(
             device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode
+            "client/models/flat_vase.obj", // needs fixing for release mode.
         ).unwrap();
 
         let flat_vase = GameObject::new(
@@ -325,7 +367,7 @@ impl App {
 
         let smooth_vase_model = Model::from_file(
             device.clone(),
-            "client/models/smooth_vase.obj", // needs fixing for release mode
+            "client/models/smooth_vase.obj", // needs fixing for release mode.
         ).unwrap();
 
         let smooth_vase = GameObject::new(

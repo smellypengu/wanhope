@@ -63,8 +63,8 @@ impl SimpleRenderSystem {
             .attribute_descriptions(Vertex::attribute_descriptions())
             .build(
                 device.clone(),
-                "client/shaders/simple_shader.vert.spv", // needs fixing for release mode
-                "client/shaders/simple_shader.frag.spv", // needs fixing for release mode
+                "client/shaders/simple_shader.vert.spv", // needs fixing for release mode.
+                "client/shaders/simple_shader.frag.spv", // needs fixing for release mode.
                 &render_pass,
                 &pipeline_layout,
             )?;

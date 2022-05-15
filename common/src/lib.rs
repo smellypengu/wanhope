@@ -1,7 +1,7 @@
 // use serde::{Serialize, Deserialize};
 
 pub enum ClientMessage {
-    Join,
+    Join, 
     Leave,
 }
 
@@ -19,6 +19,7 @@ impl TryFrom<u8> for ClientMessage {
 
 pub enum ServerMessage {
     JoinResult,
+    ClientJoining, // sent to all other clients when a new client joins
 }
 
 impl TryFrom<u8> for ServerMessage {
@@ -27,6 +28,7 @@ impl TryFrom<u8> for ServerMessage {
     fn try_from(val: u8) -> Result<Self, ()> {
         match val {
             0 => Ok(ServerMessage::JoinResult),
+            1 => Ok(ServerMessage::ClientJoining),
             _ => Err(()),
         }
     }
