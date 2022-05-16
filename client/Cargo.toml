@@ -21,6 +21,9 @@ winit = "0.26.1"
 
 rand = "0.8.5"
 
+indexmap = "1.8.1"
+ordered-float = "3.0.0"
+
 thiserror = "1.0.31"
 anyhow = "1.0.56"
 

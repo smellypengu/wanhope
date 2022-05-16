@@ -63,8 +63,8 @@ impl SimpleRenderSystem {
             .attribute_descriptions(Vertex::attribute_descriptions())
             .build(
                 device.clone(),
-                "client/shaders/simple_shader.vert.spv", // needs fixing for release mode.
-                "client/shaders/simple_shader.frag.spv", // needs fixing for release mode.
+                "client/shaders/simple_shader.vert.spv", // needs fixing for release mode
+                "client/shaders/simple_shader.frag.spv", // needs fixing for release mode
                 &render_pass,
                 &pipeline_layout,
             )?;
@@ -91,7 +91,7 @@ impl SimpleRenderSystem {
         })
     }
 
-    pub fn render_game_objects(&self, frame_info: FrameInfo, game_objects: &mut Vec<GameObject>) {
+    pub fn render_game_objects(&self, frame_info: &mut FrameInfo) {
         unsafe {
             self.pipeline.bind(frame_info.command_buffer);
 
@@ -105,17 +105,19 @@ impl SimpleRenderSystem {
             );
         }
 
-        for obj in game_objects.iter_mut() {
+        for kv in frame_info.game_objects.iter() {
+            let obj = kv.1;
+
             match &obj.model {
                 Some(model) => {
                     let push = SimplePushConstantData {
                         model_matrix: obj.transform.mat4(),
                         normal_matrix: obj.transform.normal_matrix(),
                     };
-    
+
                     unsafe {
                         let push_ptr = push.as_bytes();
-    
+
                         self.device.logical_device.cmd_push_constants(
                             frame_info.command_buffer,
                             self.pipeline_layout,
@@ -123,7 +125,7 @@ impl SimpleRenderSystem {
                             0,
                             push_ptr,
                         );
-    
+
                         model.bind(frame_info.command_buffer);
                         model.draw(&self.device.logical_device, frame_info.command_buffer);
                     }

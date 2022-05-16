@@ -145,10 +145,10 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn enable_alpha_blending(&mut self) {
+    pub fn enable_alpha_blending(mut self) -> PipelineBuilder {
         self.pipeline_info.color_blend_attachments = vec![ash::vk::PipelineColorBlendAttachmentState {
             blend_enable: ash::vk::TRUE,
-            src_color_blend_factor: ash::vk::BlendFactor::SRC1_ALPHA,
+            src_color_blend_factor: ash::vk::BlendFactor::SRC_ALPHA,
             dst_color_blend_factor: ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
             color_blend_op: ash::vk::BlendOp::ADD,
             src_alpha_blend_factor: ash::vk::BlendFactor::ONE,
@@ -156,6 +156,10 @@ impl PipelineBuilder {
             alpha_blend_op: ash::vk::BlendOp::ADD,
             color_write_mask: ash::vk::ColorComponentFlags::RGBA,
         }];
+
+        self.pipeline_info.color_blend_info.p_attachments = self.pipeline_info.color_blend_attachments.as_ptr();
+
+        self
     }
 
     pub fn build(

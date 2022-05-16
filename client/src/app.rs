@@ -1,15 +1,9 @@
-use std::{ffi::CString, rc::Rc, time::Instant, net::{UdpSocket, SocketAddr}};
+use std::{ffi::CString, rc::Rc, time::Instant, net::{UdpSocket, SocketAddr}, collections::HashMap, f32::consts::PI};
 
+use glam::Vec4Swizzles;
 use rand::Rng;
 
-use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, SimpleRenderSystem, Input, FrameInfo};
-
-#[derive(PartialEq)]
-#[repr(C)]
-pub struct GlobalUbo {
-    pub projection_view: glam::Mat4,
-    pub light_direction: glam::Vec3,
-}
+use crate::{window::{Window, WindowSettings}, vulkan::{Device, Model, Renderer, Buffer, MAX_FRAMES_IN_FLIGHT, descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter}, Align16}, game_object::{GameObject, TransformComponent}, camera::Camera, KeyboardMovementController, Input, FrameInfo, systems::{SimpleRenderSystem, PointLightSystem}, GlobalUbo, PointLight, MAX_LIGHTS};
 
 pub struct App {
     window: Window,
@@ -25,11 +19,12 @@ pub struct App {
     global_descriptor_sets: Vec<ash::vk::DescriptorSet>,
 
     simple_render_system: SimpleRenderSystem,
+    point_light_system: PointLightSystem,
 
     viewer_object: GameObject,
     camera_controller: KeyboardMovementController,
 
-    game_objects: Vec<GameObject>,
+    game_objects: HashMap<u8, GameObject>,
 
     socket: Option<UdpSocket>,
 }
@@ -64,8 +59,12 @@ impl App {
 
         let global_set_layout = unsafe {
             DescriptorSetLayout::new(renderer.device.clone())
-            .add_binding(0, ash::vk::DescriptorType::UNIFORM_BUFFER, ash::vk::ShaderStageFlags::ALL_GRAPHICS, 1)
-            .build().unwrap()
+            .add_binding(
+                0,
+                ash::vk::DescriptorType::UNIFORM_BUFFER,
+                ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
+                1,
+            ).build().unwrap()
         };
 
         let mut ubo_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
@@ -96,12 +95,20 @@ impl App {
             global_descriptor_sets.push(set);
         }
 
-        let viewer_object = GameObject::new(None, None, None);
+        let mut viewer_object = GameObject::new(None, None, None);
+        viewer_object.transform.translation.z = 2.5;
+
         let camera_controller = KeyboardMovementController::new(None, None);
 
         let game_objects = Self::load_game_objects(device.clone());
 
         let simple_render_system = SimpleRenderSystem::new(
+            device.clone(),
+            &renderer.swapchain.render_pass,
+            &[global_set_layout.inner()],
+        ).unwrap();
+
+        let point_light_system = PointLightSystem::new(
             device.clone(),
             &renderer.swapchain.render_pass,
             &[global_set_layout.inner()],
@@ -121,6 +128,7 @@ impl App {
             global_descriptor_sets,
 
             simple_render_system,
+            point_light_system,
 
             viewer_object,
             camera_controller,
@@ -209,9 +217,9 @@ impl App {
 
             let socket = self.socket.as_ref().unwrap();            
             socket.connect(remote_addr).unwrap();
-            
+
             socket.send(&[common::ClientMessage::Join as u8]).unwrap();
-            
+
             let mut response = vec![0u8; 2];
             let len = socket.recv(&mut response).unwrap();
 
@@ -235,7 +243,7 @@ impl App {
             Some(socket) => {
                 let mut data = vec![0u8; 1_024];
 
-                // set to nonblocking so recv() call doesn't freeze app, probably temporary.
+                // set to nonblocking so recv() call doesn't freeze app, probably temporary
                 socket.set_nonblocking(true).unwrap();
 
                 match socket.recv(&mut data) {
@@ -278,7 +286,7 @@ impl App {
         // shouldn't be loading new model each time, temporary.
         let flat_vase_model = Model::from_file(
             self.device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode.
+            "client/models/flat_vase.obj", // needs fixing for release mode
         ).unwrap();
 
         let mut rng = rand::thread_rng();
@@ -290,7 +298,7 @@ impl App {
             Some(TransformComponent { translation: glam::vec3(rng.gen_range(-10..10) as f32, 0.0, rng.gen_range(-10..10) as f32), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
         );
 
-        self.game_objects.push(flat_vase);
+        self.game_objects.insert(flat_vase.id, flat_vase);
     }
 
     pub fn draw(&mut self, input: &Input, frame_time: f32) {
@@ -299,7 +307,7 @@ impl App {
         let aspect = self.renderer.swapchain.extent_aspect_ratio();
 
         let camera = Camera::new()
-            .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 10.0)
+            .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 100.0)
             .set_view_xyz(self.viewer_object.transform.translation, self.viewer_object.transform.rotation)
             .build();
 
@@ -313,20 +321,27 @@ impl App {
             Some(command_buffer) => {
                 let frame_index = self.renderer.frame_index();
 
-                let frame_info = FrameInfo {
+                let mut frame_info = FrameInfo {
                     frame_index,
                     frame_time,
                     command_buffer,
                     camera,
                     global_descriptor_set: self.global_descriptor_sets[frame_index],
+                    game_objects: &mut self.game_objects,
                 };
 
                 //update
 
-                let ubo = GlobalUbo {
-                    projection_view: frame_info.camera.projection_matrix * frame_info.camera.view_matrix,
-                    light_direction: glam::vec3(1.0, -3.0, 1.0).normalize(),
+                let mut ubo = GlobalUbo {
+                    projection: frame_info.camera.projection_matrix,
+                    view: frame_info.camera.view_matrix,
+                    inverse_view: frame_info.camera.inverse_view_matrix,
+                    ambient_light_color: glam::vec4(1.0, 1.0, 1.0, 0.02),
+                    point_lights: [PointLight { position: Default::default(), color: Default::default() }; MAX_LIGHTS],
+                    num_lights: 0,
                 };
+
+                self.point_light_system.update(&mut frame_info, &mut ubo);
 
                 unsafe {
                     self.ubo_buffers[frame_index].write_to_buffer(&[ubo]);
@@ -337,7 +352,9 @@ impl App {
 
                 self.renderer.begin_swapchain_render_pass(command_buffer);
 
-                self.simple_render_system.render_game_objects(frame_info, &mut self.game_objects);
+                // order here matters
+                self.simple_render_system.render_game_objects(&mut frame_info);
+                self.point_light_system.render(&mut frame_info);
 
                 self.renderer.end_swapchain_render_pass(command_buffer);
 
@@ -353,29 +370,65 @@ impl App {
 
     fn load_game_objects(
         device: Rc<Device>,
-    ) -> Vec<GameObject> {
+    ) -> HashMap<u8, GameObject> {
+        let mut game_objects = HashMap::new();
+
+        let floor_model = Model::from_file(
+            device.clone(),
+            "client/models/quad.obj", // needs fixing for release mode
+        ).unwrap();
+
+        let floor = GameObject::new(
+            Some(floor_model),
+            None,
+            Some(TransformComponent { translation: glam::vec3(0.0, 0.5, 0.0), scale: glam::vec3(3.0, 1.0, 3.0), rotation: glam::Vec3::ZERO }),
+        );
+
+        game_objects.insert(floor.id, floor);
+
         let flat_vase_model = Model::from_file(
             device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode.
+            "client/models/flat_vase.obj", // needs fixing for release mode
         ).unwrap();
 
         let flat_vase = GameObject::new(
             Some(flat_vase_model),
             None,
-            Some(TransformComponent { translation: glam::vec3(0.0, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+            Some(TransformComponent { translation: glam::vec3(0.0, 0.5, 0.0), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
         );
+
+        game_objects.insert(flat_vase.id, flat_vase);
 
         let smooth_vase_model = Model::from_file(
             device.clone(),
-            "client/models/smooth_vase.obj", // needs fixing for release mode.
+            "client/models/smooth_vase.obj", // needs fixing for release mode
         ).unwrap();
 
         let smooth_vase = GameObject::new(
             Some(smooth_vase_model),
             None,
-            Some(TransformComponent { translation: glam::vec3(0.5, 0.0, -2.5), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
+            Some(TransformComponent { translation: glam::vec3(0.5, 0.5, 0.0), scale: glam::Vec3::ONE, rotation: glam::Vec3::ZERO }),
         );
 
-        vec![flat_vase, smooth_vase]
+        game_objects.insert(smooth_vase.id, smooth_vase);
+
+        let light_colors = vec![
+            glam::vec3(1.0, 0.1, 0.1),
+            glam::vec3(0.1, 0.1, 1.0),
+            glam::vec3(0.1, 1.0, 0.1),
+            glam::vec3(1.0, 1.0, 0.1),
+            glam::vec3(0.1, 1.0, 1.0),
+            glam::vec3(1.0, 1.0, 1.0),
+        ];
+
+        for (i, color) in light_colors.iter().enumerate() {
+            let mut point_light = GameObject::make_point_light(0.2, 0.1, *color);
+
+            let rotate_light = glam::Mat4::from_axis_angle(glam::vec3(0.0, -1.0, 0.0), i as f32 * (PI * 2.0) / light_colors.len() as f32);
+            point_light.transform.translation = (rotate_light * glam::vec4(-1.0, -1.0, -1.0, 1.0)).xyz();
+            game_objects.insert(point_light.id, point_light);
+        }
+
+        game_objects
     }
 }

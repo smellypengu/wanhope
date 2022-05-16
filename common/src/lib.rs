@@ -1,7 +1,7 @@
 // use serde::{Serialize, Deserialize};
 
 pub enum ClientMessage {
-    Join, 
+    Join,
     Leave,
 }
 
