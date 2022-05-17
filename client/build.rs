@@ -1,4 +1,10 @@
-use std::{fs, ffi::OsStr, io::Result, path::{Path, PathBuf}, process::{Output, Command}};
+use std::{
+    ffi::OsStr,
+    fs,
+    io::Result,
+    path::{Path, PathBuf},
+    process::{Command, Output},
+};
 
 fn main() {
     compile_shaders();

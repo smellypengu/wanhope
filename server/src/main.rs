@@ -1,4 +1,4 @@
-use std::{env, sync::Arc, net::SocketAddr};
+use std::{env, net::SocketAddr, sync::Arc};
 
 use tokio::{net::UdpSocket, sync::mpsc};
 
@@ -60,27 +60,27 @@ async fn main() -> crate::Result<()> {
                     response.insert(1, slot as u8);
                     tx.send((response, addr)).await?;
 
-                    clients[slot as usize] = Client {
-                        addr: Some(addr),
-                    };
+                    clients[slot as usize] = Client { addr: Some(addr) };
 
                     // inform all other clients that a new client joined
                     for i in 0..MAX_CLIENTS {
                         if i != slot as usize {
                             if clients[i].addr.is_some() {
-                                tx.send(([common::ServerMessage::ClientJoining as u8].to_vec(), clients[i].addr.unwrap())).await?;
+                                tx.send((
+                                    [common::ServerMessage::ClientJoining as u8].to_vec(),
+                                    clients[i].addr.unwrap(),
+                                ))
+                                .await?;
                             }
                         }
                     }
                 }
-            },
+            }
             common::ClientMessage::Leave => {
                 let client_index = buf[1];
 
-                clients[client_index as usize] = Client {
-                    addr: None,
-                }
-            },
+                clients[client_index as usize] = Client { addr: None }
+            }
         }
 
         // let mut msg: common::TestStruct = common::deserialize(&buf[..len]).unwrap();

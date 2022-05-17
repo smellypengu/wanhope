@@ -4,7 +4,10 @@ use glam::Vec4Swizzles;
 use indexmap::IndexMap;
 use ordered_float::OrderedFloat;
 
-use crate::{vulkan::{Device, Pipeline, RenderError}, FrameInfo, GlobalUbo, MAX_LIGHTS};
+use crate::{
+    vulkan::{Device, Pipeline, RenderError},
+    FrameInfo, GlobalUbo, MAX_LIGHTS,
+};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -35,16 +38,9 @@ impl PointLightSystem {
         render_pass: &ash::vk::RenderPass,
         set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<Self, RenderError> {
-        let pipeline_layout = Self::create_pipeline_layout(
-            &device.logical_device,
-            set_layouts,
-        )?;
+        let pipeline_layout = Self::create_pipeline_layout(&device.logical_device, set_layouts)?;
 
-        let pipeline = Self::create_pipeline(
-            device.clone(),
-            render_pass,
-            &pipeline_layout,
-        )?;
+        let pipeline = Self::create_pipeline(device.clone(), render_pass, &pipeline_layout)?;
 
         Ok(Self {
             device,
@@ -63,15 +59,13 @@ impl PointLightSystem {
             "Cannot create pipeline before pipeline layout"
         );
 
-        let pipeline = Pipeline::start()
-            .enable_alpha_blending()
-            .build(
-                device.clone(),
-                "client/shaders/point_light.vert.spv", // needs fixing for release mode
-                "client/shaders/point_light.frag.spv", // needs fixing for release mode
-                &render_pass,
-                &pipeline_layout,
-            )?;
+        let pipeline = Pipeline::start().enable_alpha_blending().build(
+            device.clone(),
+            "client/shaders/point_light.vert.spv", // needs fixing for release mode
+            "client/shaders/point_light.frag.spv", // needs fixing for release mode
+            &render_pass,
+            &pipeline_layout,
+        )?;
 
         Ok(pipeline)
     }
@@ -90,13 +84,12 @@ impl PointLightSystem {
             .set_layouts(set_layouts)
             .push_constant_ranges(&push_constant_range);
 
-        Ok(unsafe {
-            logical_device.create_pipeline_layout(&pipeline_layout_info, None)?
-        })
+        Ok(unsafe { logical_device.create_pipeline_layout(&pipeline_layout_info, None)? })
     }
 
     pub fn update(&self, frame_info: &mut FrameInfo, ubo: &mut GlobalUbo) {
-        let rotate_light = glam::Mat4::from_axis_angle(glam::vec3(0.0, -1.0, 0.0), frame_info.frame_time);
+        let rotate_light =
+            glam::Mat4::from_axis_angle(glam::vec3(0.0, -1.0, 0.0), frame_info.frame_time);
 
         let mut light_index = 0;
 
@@ -110,14 +103,26 @@ impl PointLightSystem {
 
             match &obj.point_light {
                 Some(point_light) => {
-                    obj.transform.translation = (rotate_light * obj.transform.translation.extend(1.0)).xyz();
+                    obj.transform.translation =
+                        (rotate_light * obj.transform.translation.extend(1.0)).xyz();
 
-                    ubo.point_lights[light_index].position = glam::vec4(obj.transform.translation.x, obj.transform.translation.y, obj.transform.translation.z, 1.0);
-                    ubo.point_lights[light_index].color = glam::vec4(obj.color.x, obj.color.y, obj.color.z, point_light.light_intensity);
+                    ubo.point_lights[light_index].position = glam::vec4(
+                        obj.transform.translation.x,
+                        obj.transform.translation.y,
+                        obj.transform.translation.z,
+                        1.0,
+                    );
+
+                    ubo.point_lights[light_index].color = glam::vec4(
+                        obj.color.x,
+                        obj.color.y,
+                        obj.color.z,
+                        point_light.light_intensity,
+                    );
 
                     light_index += 1;
-                },
-                None => {},
+                }
+                None => {}
             }
         }
 
@@ -135,8 +140,8 @@ impl PointLightSystem {
                     let offset = frame_info.camera.position() - obj.transform.translation;
                     let dis_squared = offset.dot(offset);
                     sorted.insert(OrderedFloat::from(dis_squared), obj.id);
-                },
-                None => {},
+                }
+                None => {}
             }
         }
 
@@ -159,8 +164,18 @@ impl PointLightSystem {
                 let obj = &frame_info.game_objects[kv.1];
 
                 let push = PointLightPushConstants {
-                    position: glam::vec4(obj.transform.translation.x, obj.transform.translation.y, obj.transform.translation.z, 1.0),
-                    color: glam::vec4(obj.color.x, obj.color.y, obj.color.z, obj.point_light.as_ref().unwrap().light_intensity),
+                    position: glam::vec4(
+                        obj.transform.translation.x,
+                        obj.transform.translation.y,
+                        obj.transform.translation.z,
+                        1.0,
+                    ),
+                    color: glam::vec4(
+                        obj.color.x,
+                        obj.color.y,
+                        obj.color.z,
+                        obj.point_light.as_ref().unwrap().light_intensity,
+                    ),
                     radius: obj.transform.scale.x,
                 };
 
@@ -174,13 +189,9 @@ impl PointLightSystem {
                     push_ptr,
                 );
 
-                self.device.logical_device.cmd_draw(
-                    frame_info.command_buffer,
-                    6,
-                    1,
-                    0,
-                    0,
-                )
+                self.device
+                    .logical_device
+                    .cmd_draw(frame_info.command_buffer, 6, 1, 0, 0)
             }
         }
     }
@@ -191,7 +202,9 @@ impl Drop for PointLightSystem {
         log::debug!("Dropping simple render system");
 
         unsafe {
-            self.device.logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device
+                .logical_device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }
 }

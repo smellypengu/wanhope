@@ -49,14 +49,13 @@ impl Window {
             .with_resizable(window_settings.resizable);
 
         window_builder = match window_settings.mode {
-            WindowMode::Windowed => {
-                window_builder
-                    .with_inner_size(winit::dpi::LogicalSize::new(window_settings.width, window_settings.height))
-            }
-            WindowMode::BorderlessFullscreen => {
-                window_builder
-                    .with_fullscreen(Some(winit::window::Fullscreen::Borderless(event_loop.primary_monitor())))
-            }
+            WindowMode::Windowed => window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+                window_settings.width,
+                window_settings.height,
+            )),
+            WindowMode::BorderlessFullscreen => window_builder.with_fullscreen(Some(
+                winit::window::Fullscreen::Borderless(event_loop.primary_monitor()),
+            )),
         };
 
         let raw_window = window_builder.build(&event_loop).unwrap();
@@ -87,10 +86,11 @@ impl Window {
     }
 
     pub fn set_position(&self, position: glam::IVec2) {
-        self.raw_window.set_outer_position(winit::dpi::PhysicalPosition {
-            x: position.x,
-            y: position.y,
-        });
+        self.raw_window
+            .set_outer_position(winit::dpi::PhysicalPosition {
+                x: position.x,
+                y: position.y,
+            });
     }
 
     #[inline]
@@ -125,7 +125,8 @@ impl Window {
                 self.raw_window.set_fullscreen(None);
             }
             WindowMode::BorderlessFullscreen => {
-                self.raw_window.set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
+                self.raw_window
+                    .set_fullscreen(Some(winit::window::Fullscreen::Borderless(None)));
             }
         }
     }
@@ -137,13 +138,17 @@ impl Window {
     }
 
     pub fn set_cursor_position(&mut self, position: glam::Vec2) {
-        let inner_size = self.raw_window.inner_size().to_logical::<f32>(self.raw_window.scale_factor());
+        let inner_size = self
+            .raw_window
+            .inner_size()
+            .to_logical::<f32>(self.raw_window.scale_factor());
 
-        self.raw_window.set_cursor_position(winit::dpi::LogicalPosition::new(
-            position.x,
-            inner_size.height - position.y,
-        ))
-        .unwrap_or_else(|e| log::error!("Failed to set cursor position: {}", e));
+        self.raw_window
+            .set_cursor_position(winit::dpi::LogicalPosition::new(
+                position.x,
+                inner_size.height - position.y,
+            ))
+            .unwrap_or_else(|e| log::error!("Failed to set cursor position: {}", e));
     }
 
     #[inline]

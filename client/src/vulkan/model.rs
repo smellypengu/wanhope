@@ -1,6 +1,6 @@
-use std::{rc::Rc, mem::size_of};
+use std::{mem::size_of, rc::Rc};
 
-use super::{RenderError, Device, Buffer};
+use super::{Buffer, Device, RenderError};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Vertex {
@@ -14,13 +14,11 @@ impl Vertex {
     pub fn binding_descriptions() -> Vec<ash::vk::VertexInputBindingDescription> {
         let vertex_size = std::mem::size_of::<Vertex>() as u32;
 
-        vec![
-            ash::vk::VertexInputBindingDescription {
-                binding: 0,
-                stride: vertex_size,
-                input_rate: ash::vk::VertexInputRate::VERTEX,
-            },
-        ]
+        vec![ash::vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: vertex_size,
+            input_rate: ash::vk::VertexInputRate::VERTEX,
+        }]
     }
 
     pub fn attribute_descriptions() -> Vec<ash::vk::VertexInputAttributeDescription> {
@@ -47,7 +45,9 @@ impl Vertex {
                 location: 3,
                 binding: 0,
                 format: ash::vk::Format::R32G32B32_SFLOAT,
-                offset: (size_of::<glam::Vec3>() + size_of::<glam::Vec3>() + size_of::<glam::Vec3>()) as u32,
+                offset: (size_of::<glam::Vec3>()
+                    + size_of::<glam::Vec3>()
+                    + size_of::<glam::Vec3>()) as u32,
             },
         ]
     }
@@ -65,8 +65,7 @@ impl Model {
         vertices: &Vec<Vertex>,
         indices: Option<&Vec<u32>>,
     ) -> anyhow::Result<Rc<Self>, RenderError> {
-        let (vertex_buffer, vertex_count) =
-            Self::create_vertex_buffers(&device, vertices)?;
+        let (vertex_buffer, vertex_count) = Self::create_vertex_buffers(&device, vertices)?;
 
         match indices {
             Some(indices) => {
@@ -77,8 +76,8 @@ impl Model {
                     vertex_count,
                     indices: Some(indices),
                 }));
-            },
-            None => { }
+            }
+            None => {}
         }
 
         Ok(Rc::new(Self {
@@ -89,10 +88,7 @@ impl Model {
     }
 
     pub fn from_file(device: Rc<Device>, file_path: &str) -> anyhow::Result<Rc<Self>, RenderError> {
-        let (models, _) = tobj::load_obj(
-            file_path,
-            &tobj::GPU_LOAD_OPTIONS,
-        ).unwrap();
+        let (models, _) = tobj::load_obj(file_path, &tobj::GPU_LOAD_OPTIONS).unwrap();
 
         let mesh = &models[0].mesh;
 
@@ -100,7 +96,7 @@ impl Model {
 
         let colors = match mesh.vertex_color.as_slice() {
             [] => vec![1_f32; positions.len()],
-            v => v.to_vec(),  
+            v => v.to_vec(),
         };
 
         let normals = mesh.normals.as_slice();
@@ -135,33 +131,20 @@ impl Model {
             vertices.push(vertex);
         }
 
-        Ok(Model::new(
-            device,
-            &vertices,
-            Some(&mesh.indices.clone())
-        )?)
+        Ok(Model::new(device, &vertices, Some(&mesh.indices.clone()))?)
     }
 
-    pub unsafe fn draw(&self, logical_device: &ash::Device, command_buffer: ash::vk::CommandBuffer) {
+    pub unsafe fn draw(
+        &self,
+        logical_device: &ash::Device,
+        command_buffer: ash::vk::CommandBuffer,
+    ) {
         match &self.indices {
             Some((_index_buffer, index_count)) => {
-                logical_device.cmd_draw_indexed(
-                    command_buffer,
-                    *index_count,
-                    1,
-                    0,
-                    0,
-                    0,
-                );
-            },
+                logical_device.cmd_draw_indexed(command_buffer, *index_count, 1, 0, 0, 0);
+            }
             None => {
-                logical_device.cmd_draw(
-                    command_buffer, 
-                    self.vertex_count,
-                    1,
-                    0,
-                    0,
-                );
+                logical_device.cmd_draw(command_buffer, self.vertex_count, 1, 0, 0);
             }
         }
     }
@@ -172,8 +155,8 @@ impl Model {
         match &self.indices {
             Some((index_buffer, _index_count)) => {
                 index_buffer.bind_index(command_buffer, ash::vk::IndexType::UINT32);
-            },
-            None => { }
+            }
+            None => {}
         }
     }
 
@@ -183,18 +166,17 @@ impl Model {
     ) -> anyhow::Result<(Buffer<Vertex>, u32), RenderError> {
         let vertex_count = vertices.len();
 
-        assert!(
-            vertex_count >= 3,
-            "Vertex count must be at least 3",
-        );
+        assert!(vertex_count >= 3, "Vertex count must be at least 3",);
 
-        let buffer_size: ash::vk::DeviceSize = (std::mem::size_of::<Vertex>() * vertex_count) as u64;
+        let buffer_size: ash::vk::DeviceSize =
+            (std::mem::size_of::<Vertex>() * vertex_count) as u64;
 
         let mut staging_buffer = Buffer::new(
             device.clone(),
             vertex_count,
             ash::vk::BufferUsageFlags::TRANSFER_SRC,
-            ash::vk::MemoryPropertyFlags::HOST_VISIBLE | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+            ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
         unsafe {
@@ -226,7 +208,8 @@ impl Model {
             device.clone(),
             index_count,
             ash::vk::BufferUsageFlags::TRANSFER_SRC,
-            ash::vk::MemoryPropertyFlags::HOST_VISIBLE | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+            ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
         unsafe {

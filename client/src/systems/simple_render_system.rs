@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use crate::{game_object::GameObject, vulkan::{Vertex, Device, Pipeline, RenderError}, FrameInfo};
+use crate::{
+    vulkan::{Device, Pipeline, RenderError, Vertex},
+    FrameInfo,
+};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -30,16 +33,9 @@ impl SimpleRenderSystem {
         render_pass: &ash::vk::RenderPass,
         set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<Self, RenderError> {
-        let pipeline_layout = Self::create_pipeline_layout(
-            &device.logical_device,
-            set_layouts,
-        )?;
+        let pipeline_layout = Self::create_pipeline_layout(&device.logical_device, set_layouts)?;
 
-        let pipeline = Self::create_pipeline(
-            device.clone(),
-            render_pass,
-            &pipeline_layout,
-        )?;
+        let pipeline = Self::create_pipeline(device.clone(), render_pass, &pipeline_layout)?;
 
         Ok(Self {
             device,
@@ -86,9 +82,7 @@ impl SimpleRenderSystem {
             .set_layouts(set_layouts)
             .push_constant_ranges(&push_constant_range);
 
-        Ok(unsafe {
-            logical_device.create_pipeline_layout(&pipeline_layout_info, None)?
-        })
+        Ok(unsafe { logical_device.create_pipeline_layout(&pipeline_layout_info, None)? })
     }
 
     pub fn render_game_objects(&self, frame_info: &mut FrameInfo) {
@@ -129,8 +123,8 @@ impl SimpleRenderSystem {
                         model.bind(frame_info.command_buffer);
                         model.draw(&self.device.logical_device, frame_info.command_buffer);
                     }
-                },
-                None => { },
+                }
+                None => {}
             }
         }
     }
@@ -141,7 +135,9 @@ impl Drop for SimpleRenderSystem {
         log::debug!("Dropping simple render system");
 
         unsafe {
-            self.device.logical_device.destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device
+                .logical_device
+                .destroy_pipeline_layout(self.pipeline_layout, None);
         }
     }
 }

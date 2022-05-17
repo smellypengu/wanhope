@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{DescriptorSetLayout, DescriptorPool};
+use super::{DescriptorPool, DescriptorSetLayout};
 
 pub struct DescriptorSetWriter {
     set_layout: Rc<DescriptorSetLayout>,
@@ -9,10 +9,7 @@ pub struct DescriptorSetWriter {
 }
 
 impl DescriptorSetWriter {
-    pub fn new(
-        set_layout: Rc<DescriptorSetLayout>,
-        pool: Rc<DescriptorPool>,
-    ) -> Self {
+    pub fn new(set_layout: Rc<DescriptorSetLayout>, pool: Rc<DescriptorPool>) -> Self {
         DescriptorSetWriter {
             set_layout,
             pool,
@@ -26,7 +23,11 @@ impl DescriptorSetWriter {
         buffer_info: &[ash::vk::DescriptorBufferInfo],
     ) -> Self {
         assert_eq!(
-            self.set_layout.bindings.keys().filter(|&b| *b == binding).count(),
+            self.set_layout
+                .bindings
+                .keys()
+                .filter(|&b| *b == binding)
+                .count(),
             1,
             "Layout does not contain specified binding",
         );
@@ -34,8 +35,7 @@ impl DescriptorSetWriter {
         let binding_description = self.set_layout.bindings[&binding];
 
         assert_eq!(
-            binding_description.descriptor_count,
-            1,
+            binding_description.descriptor_count, 1,
             "Binding single descriptor info, but binding expects multiple",
         );
 
@@ -56,15 +56,19 @@ impl DescriptorSetWriter {
         image_info: &[ash::vk::DescriptorImageInfo],
     ) -> Self {
         assert!(
-            self.set_layout.bindings.keys().filter(|&b| *b == binding).count() == 1,
+            self.set_layout
+                .bindings
+                .keys()
+                .filter(|&b| *b == binding)
+                .count()
+                == 1,
             "Layout does not contain specified binding",
         );
 
         let binding_description = self.set_layout.bindings[&binding];
 
         assert_eq!(
-            binding_description.descriptor_count,
-            1,
+            binding_description.descriptor_count, 1,
             "Binding single descriptor info, but binding expects multiple",
         );
 
@@ -95,7 +99,10 @@ impl DescriptorSetWriter {
             write.dst_set = set;
         }
 
-        self.pool.device.logical_device.update_descriptor_sets(&self.writes, &[]);
+        self.pool
+            .device
+            .logical_device
+            .update_descriptor_sets(&self.writes, &[]);
 
         set
     }

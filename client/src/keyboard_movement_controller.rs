@@ -1,4 +1,4 @@
-use std::f32::{EPSILON, consts::PI};
+use std::f32::{consts::PI, EPSILON};
 
 use winit::event::VirtualKeyCode;
 
@@ -27,12 +27,7 @@ impl KeyboardMovementController {
         }
     }
 
-    pub fn move_in_plane_xz(
-        &self,
-        input: &Input,
-        dt: f32,
-        game_object: &mut GameObject,
-    ) {
+    pub fn move_in_plane_xz(&self, input: &Input, dt: f32, game_object: &mut GameObject) {
         let mut rotate = glam::Vec3::ZERO;
 
         if input.key_held(VirtualKeyCode::Right) {
@@ -96,8 +91,7 @@ impl KeyboardMovementController {
         }
 
         if velocity.dot(velocity) > EPSILON {
-            game_object.transform.translation +=
-                self.move_speed * dt * velocity.normalize();
+            game_object.transform.translation += self.move_speed * dt * velocity.normalize();
         }
     }
 }

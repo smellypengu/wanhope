@@ -1,6 +1,6 @@
 use std::{ffi::c_void, marker::PhantomData, rc::Rc};
 
-use super::{RenderError, Device};
+use super::{Device, RenderError};
 
 pub struct Buffer<T>
 where
@@ -28,11 +28,8 @@ where
     ) -> anyhow::Result<Self, RenderError> {
         let byte_len = std::mem::size_of::<T>() * size;
 
-        let (buffer, memory, coherent) = device.create_buffer(
-            byte_len as u64,
-            usage_flags,
-            memory_property_flags
-        )?;
+        let (buffer, memory, coherent) =
+            device.create_buffer(byte_len as u64, usage_flags, memory_property_flags)?;
 
         Ok(Self {
             device,
@@ -47,21 +44,19 @@ where
     }
 
     pub unsafe fn bind_vertex(&self, command_buffer: ash::vk::CommandBuffer) {
-        self.device.logical_device.cmd_bind_vertex_buffers(
-            command_buffer,
-            0,
-            &[self.buffer], 
-            &[0],
-        )
+        self.device
+            .logical_device
+            .cmd_bind_vertex_buffers(command_buffer, 0, &[self.buffer], &[0])
     }
 
-    pub unsafe fn bind_index(&self, command_buffer: ash::vk::CommandBuffer, index_type: ash::vk::IndexType) {
-        self.device.logical_device.cmd_bind_index_buffer(
-            command_buffer,
-            self.buffer,
-            0,
-            index_type,
-        )
+    pub unsafe fn bind_index(
+        &self,
+        command_buffer: ash::vk::CommandBuffer,
+        index_type: ash::vk::IndexType,
+    ) {
+        self.device
+            .logical_device
+            .cmd_bind_index_buffer(command_buffer, self.buffer, 0, index_type)
     }
 
     pub unsafe fn map(&mut self, element_offset: usize) -> anyhow::Result<(), RenderError> {
@@ -74,7 +69,7 @@ where
             self.memory,
             mem_offset,
             mem_size,
-            ash::vk::MemoryMapFlags::empty()
+            ash::vk::MemoryMapFlags::empty(),
         )?)
     }
 
@@ -87,10 +82,7 @@ where
     }
 
     pub unsafe fn write_to_buffer(&mut self, elements: &[T]) {
-        assert!(
-            !self.mapped.is_null(),
-            "Cannot copy to unmapped buffer",
-        );
+        assert!(!self.mapped.is_null(), "Cannot copy to unmapped buffer",);
 
         elements
             .as_ptr()
@@ -109,7 +101,10 @@ where
             ..Default::default()
         }];
 
-        Ok(self.device.logical_device.flush_mapped_memory_ranges(&mapped_range)?)
+        Ok(self
+            .device
+            .logical_device
+            .flush_mapped_memory_ranges(&mapped_range)?)
     }
 
     #[inline]

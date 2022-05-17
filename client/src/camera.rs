@@ -52,7 +52,8 @@ impl CameraBuilder {
             rotation.y.cos() * rotation.x.cos(),
         );
 
-        let view_matrix = glam::Mat4::look_at_rh(position, position - dir, glam::Vec3::new(0.0, 1.0, 0.0));
+        let view_matrix =
+            glam::Mat4::look_at_rh(position, position - dir, glam::Vec3::new(0.0, 1.0, 0.0));
 
         self.view_matrix = view_matrix;
 

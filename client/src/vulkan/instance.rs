@@ -1,4 +1,4 @@
-use std::ffi::{CString, CStr, c_void};
+use std::ffi::{c_void, CStr, CString};
 
 use super::RenderError;
 
@@ -20,7 +20,7 @@ unsafe extern "system" fn vulkan_debug_callback(
         log::warn!("{:?} - {:?}", typ, message);
     } else if flag == ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO {
         log::info!("{:?} - {:?}", typ, message);
-    }  else {
+    } else {
         log::info!("{:?} - {:?}", typ, message);
     }
 
@@ -30,17 +30,15 @@ unsafe extern "system" fn vulkan_debug_callback(
 pub struct Instance {
     pub entry: ash::Entry,
     instance: ash::Instance,
-    debug_messenger: Option<(ash::extensions::ext::DebugUtils, ash::vk::DebugUtilsMessengerEXT)>,
+    debug_messenger: Option<(
+        ash::extensions::ext::DebugUtils,
+        ash::vk::DebugUtilsMessengerEXT,
+    )>,
 }
 
 impl Instance {
-    pub fn new(
-        app_name: CString,
-        engine_name: CString,
-    ) -> anyhow::Result<Self, RenderError> {
-        let entry = unsafe {
-            ash::Entry::load()?
-        };
+    pub fn new(app_name: CString, engine_name: CString) -> anyhow::Result<Self, RenderError> {
+        let entry = unsafe { ash::Entry::load()? };
 
         let app_info = ash::vk::ApplicationInfo::builder()
             .application_name(app_name.as_c_str())
@@ -65,9 +63,7 @@ impl Instance {
             }
         }
 
-        let instance = unsafe {
-            entry.create_instance(&create_info, None)?
-        };
+        let instance = unsafe { entry.create_instance(&create_info, None)? };
 
         let debug_messenger = if ENABLE_VALIDATION_LAYERS {
             Some(Self::setup_debug_messenger(&entry, &instance)?)
@@ -85,32 +81,35 @@ impl Instance {
     fn setup_debug_messenger(
         entry: &ash::Entry,
         instance: &ash::Instance,
-    ) -> anyhow::Result<(ash::extensions::ext::DebugUtils, ash::vk::DebugUtilsMessengerEXT), RenderError> {
+    ) -> anyhow::Result<
+        (
+            ash::extensions::ext::DebugUtils,
+            ash::vk::DebugUtilsMessengerEXT,
+        ),
+        RenderError,
+    > {
         let create_info = ash::vk::DebugUtilsMessengerCreateInfoEXT::builder()
             .message_severity(
                 ash::vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                    | ash::vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                    // | ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO
-            ).message_type(
+                    | ash::vk::DebugUtilsMessageSeverityFlagsEXT::WARNING, // | ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+            )
+            .message_type(
                 ash::vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
                     | ash::vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                    | ash::vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE
-            ).pfn_user_callback(Some(vulkan_debug_callback));
+                    | ash::vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
+            )
+            .pfn_user_callback(Some(vulkan_debug_callback));
 
         let debug_report = ash::extensions::ext::DebugUtils::new(entry, instance);
 
-        let debug_report_callback = unsafe {
-            debug_report.create_debug_utils_messenger(&create_info, None)?
-        };
+        let debug_report_callback =
+            unsafe { debug_report.create_debug_utils_messenger(&create_info, None)? };
 
         Ok((debug_report, debug_report_callback))
     }
 
-    fn check_validation_layer_support(
-        entry: &ash::Entry
-    ) -> anyhow::Result<bool, RenderError> {
-        let layer_properties = entry
-            .enumerate_instance_layer_properties()?;
+    fn check_validation_layer_support(entry: &ash::Entry) -> anyhow::Result<bool, RenderError> {
+        let layer_properties = entry.enumerate_instance_layer_properties()?;
 
         if layer_properties.len() <= 0 {
             log::error!("No available layers");
@@ -120,13 +119,9 @@ impl Instance {
             log::debug!("Instance available layers: ");
 
             for layer in layer_properties.iter() {
-                let layer_name = unsafe {
-                    CStr::from_ptr(layer.layer_name.as_ptr())
-                };
+                let layer_name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
 
-                let layer_name = layer_name
-                    .to_str()
-                    .unwrap();
+                let layer_name = layer_name.to_str().unwrap();
 
                 log::debug!("\t{}", layer_name);
             }
@@ -136,13 +131,9 @@ impl Instance {
             let mut found = false;
 
             for layer_property in layer_properties.iter() {
-                let layer_name = unsafe {
-                    CStr::from_ptr(layer_property.layer_name.as_ptr())
-                };
+                let layer_name = unsafe { CStr::from_ptr(layer_property.layer_name.as_ptr()) };
 
-                let layer_name = layer_name
-                    .to_str()
-                    .unwrap();
+                let layer_name = layer_name.to_str().unwrap();
 
                 if (*required_layer_name) == layer_name {
                     found = true;
@@ -177,10 +168,10 @@ impl Instance {
 
         extensions.push(ash::extensions::khr::Surface::name().as_ptr());
 
-        #[cfg(target_os="windows")]
+        #[cfg(target_os = "windows")]
         extensions.push(ash::extensions::khr::Win32Surface::name().as_ptr());
 
-        #[cfg(target_os="linux")]
+        #[cfg(target_os = "linux")]
         extensions.push(ash::extensions::khr::XlibSurface::name().as_ptr());
 
         if ENABLE_VALIDATION_LAYERS {

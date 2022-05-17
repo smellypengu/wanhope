@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{RenderError, Device, ImageView};
+use super::{Device, ImageView, RenderError};
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
@@ -32,32 +32,22 @@ impl Swapchain {
         old_swapchain: Option<ash::vk::SwapchainKHR>,
     ) -> anyhow::Result<Self, RenderError> {
         let old_swapchain = match old_swapchain {
-            Some(swapchain ) => swapchain,
+            Some(swapchain) => swapchain,
             None => ash::vk::SwapchainKHR::null(),
         };
 
-        let (swapchain, 
-            swapchain_khr,
-            swapchain_images,
-            swapchain_image_format,
-            swapchain_extent,
-        ) = Self::create_swapchain(&device, window_extent, old_swapchain)?;
+        let (swapchain, swapchain_khr, swapchain_images, swapchain_image_format, swapchain_extent) =
+            Self::create_swapchain(&device, window_extent, old_swapchain)?;
         log::debug!("Vulkan swapchain created");
 
-        let swapchain_image_views = Self::create_image_views(
-            device.clone(),
-            &swapchain_images,
-            swapchain_image_format,
-        );
+        let swapchain_image_views =
+            Self::create_image_views(device.clone(), &swapchain_images, swapchain_image_format);
 
         let render_pass = Self::create_render_pass(&device, swapchain_image_format)?;
         log::debug!("Vulkan render pass created");
-        
-        let (depth_images,
-            depth_image_memories,
-            depth_image_views,
-            swapchain_depth_format,
-        ) = Self::create_depth_resources(device.clone(), &swapchain_images, swapchain_extent);
+
+        let (depth_images, depth_image_memories, depth_image_views, swapchain_depth_format) =
+            Self::create_depth_resources(device.clone(), &swapchain_images, swapchain_extent);
         log::debug!("Vulkan depth resources created");
 
         let swapchain_framebuffers = Self::create_framebuffers(
@@ -68,7 +58,7 @@ impl Swapchain {
             render_pass,
         );
         log::debug!("Vulkan framebuffers created");
-        
+
         let (
             image_available_semaphores,
             render_finished_semaphores,
@@ -126,7 +116,11 @@ impl Swapchain {
     pub unsafe fn acquire_next_image(
         &self,
     ) -> anyhow::Result<Result<(u32, bool), ash::vk::Result>, RenderError> {
-        self.device.logical_device.wait_for_fences(&[self.in_flight_fences[self.current_frame]], false, u64::MAX)?;
+        self.device.logical_device.wait_for_fences(
+            &[self.in_flight_fences[self.current_frame]],
+            false,
+            u64::MAX,
+        )?;
 
         Ok(self.swapchain.acquire_next_image(
             self.swapchain_khr.unwrap(),
@@ -167,12 +161,14 @@ impl Swapchain {
             .build()];
 
         unsafe {
-            self.device.logical_device.reset_fences(&[self.in_flight_fences[self.current_frame]])?;
+            self.device
+                .logical_device
+                .reset_fences(&[self.in_flight_fences[self.current_frame]])?;
 
             self.device.logical_device.queue_submit(
                 self.device.graphics_queue,
                 submit_info,
-                self.in_flight_fences[self.current_frame]
+                self.in_flight_fences[self.current_frame],
             )?;
         };
 
@@ -188,10 +184,8 @@ impl Swapchain {
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
         Ok(unsafe {
-            self.swapchain.queue_present(
-                self.device.present_queue, 
-                &present_info,
-            )?
+            self.swapchain
+                .queue_present(self.device.present_queue, &present_info)?
         })
     }
 
@@ -199,13 +193,16 @@ impl Swapchain {
         device: &Rc<Device>,
         window_extent: ash::vk::Extent2D,
         old_swapchain: ash::vk::SwapchainKHR,
-    ) -> anyhow::Result<(
-        ash::extensions::khr::Swapchain,
-        ash::vk::SwapchainKHR,
-        Vec<ash::vk::Image>,
-        ash::vk::Format,
-        ash::vk::Extent2D,
-    ), RenderError> {
+    ) -> anyhow::Result<
+        (
+            ash::extensions::khr::Swapchain,
+            ash::vk::SwapchainKHR,
+            Vec<ash::vk::Image>,
+            ash::vk::Format,
+            ash::vk::Extent2D,
+        ),
+        RenderError,
+    > {
         let swapchain_support = device.get_swapchain_support()?;
 
         let surface_format = Self::choose_surface_format(&swapchain_support.formats);
@@ -235,10 +232,7 @@ impl Swapchain {
 
         let queue_indices = device.find_physical_queue_families()?;
 
-        let queue_family_indices = [
-            queue_indices.graphics_family, 
-            queue_indices.present_family,
-        ];
+        let queue_family_indices = [queue_indices.graphics_family, queue_indices.present_family];
 
         if queue_indices.graphics_family != queue_indices.present_family {
             create_info = create_info
@@ -255,18 +249,12 @@ impl Swapchain {
             .clipped(true)
             .old_swapchain(old_swapchain);
 
-        let swapchain = ash::extensions::khr::Swapchain::new(
-            &device.instance.inner(),
-            &device.logical_device
-        );
+        let swapchain =
+            ash::extensions::khr::Swapchain::new(&device.instance.inner(), &device.logical_device);
 
-        let swapchain_khr = unsafe {
-            swapchain.create_swapchain(&create_info, None)?
-        };
+        let swapchain_khr = unsafe { swapchain.create_swapchain(&create_info, None)? };
 
-        let swapchain_images = unsafe {
-            swapchain.get_swapchain_images(swapchain_khr)?
-        };
+        let swapchain_images = unsafe { swapchain.get_swapchain_images(swapchain_khr)? };
 
         let swapchain_image_format = surface_format.format;
 
@@ -294,7 +282,8 @@ impl Swapchain {
                     *image,
                     swapchain_image_format,
                     ash::vk::ImageAspectFlags::COLOR,
-                ).unwrap() // fix unwrap?
+                )
+                .unwrap() // fix unwrap?
             })
             .collect::<Vec<_>>()
     }
@@ -311,32 +300,37 @@ impl Swapchain {
     ) {
         let depth_format = Self::find_depth_format(&device);
 
-        let (images, image_memories): (Vec<ash::vk::Image>, Vec<ash::vk::DeviceMemory>) = swapchain_images
-            .iter()
-            .map(|_| {
-                let extent = ash::vk::Extent3D {
-                    width: swapchain_extent.width,
-                    height: swapchain_extent.height,
-                    depth: 1,
-                };
+        let (images, image_memories): (Vec<ash::vk::Image>, Vec<ash::vk::DeviceMemory>) =
+            swapchain_images
+                .iter()
+                .map(|_| {
+                    let extent = ash::vk::Extent3D {
+                        width: swapchain_extent.width,
+                        height: swapchain_extent.height,
+                        depth: 1,
+                    };
 
-                let image_info = ash::vk::ImageCreateInfo::builder()
-                    .image_type(ash::vk::ImageType::TYPE_2D)
-                    .extent(extent)
-                    .mip_levels(1)
-                    .array_layers(1)
-                    .format(depth_format)
-                    .tiling(ash::vk::ImageTiling::OPTIMAL)
-                    .initial_layout(ash::vk::ImageLayout::UNDEFINED)
-                    .usage(ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-                    .samples(ash::vk::SampleCountFlags::TYPE_1)
-                    .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-                    .flags(ash::vk::ImageCreateFlags::empty());
+                    let image_info = ash::vk::ImageCreateInfo::builder()
+                        .image_type(ash::vk::ImageType::TYPE_2D)
+                        .extent(extent)
+                        .mip_levels(1)
+                        .array_layers(1)
+                        .format(depth_format)
+                        .tiling(ash::vk::ImageTiling::OPTIMAL)
+                        .initial_layout(ash::vk::ImageLayout::UNDEFINED)
+                        .usage(ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+                        .samples(ash::vk::SampleCountFlags::TYPE_1)
+                        .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
+                        .flags(ash::vk::ImageCreateFlags::empty());
 
-                device.create_image_with_info(&image_info, ash::vk::MemoryPropertyFlags::DEVICE_LOCAL)
-                    .unwrap() // TODO: fix unwrap?
-            })
-            .unzip();
+                    device
+                        .create_image_with_info(
+                            &image_info,
+                            ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                        )
+                        .unwrap() // TODO: fix unwrap?
+                })
+                .unzip();
 
         let image_views = images
             .iter()
@@ -346,7 +340,8 @@ impl Swapchain {
                     *image,
                     depth_format,
                     ash::vk::ImageAspectFlags::DEPTH,
-                ).unwrap() // fix unwrap?
+                )
+                .unwrap() // fix unwrap?
             })
             .collect::<Vec<_>>();
 
@@ -360,27 +355,30 @@ impl Swapchain {
         Ok(unsafe {
             device.logical_device.create_render_pass(
                 &ash::vk::RenderPassCreateInfo::builder()
-                    .attachments(&[ash::vk::AttachmentDescription {
-                        format: swapchain_image_format,
-                        samples: ash::vk::SampleCountFlags::TYPE_1,
-                        load_op: ash::vk::AttachmentLoadOp::CLEAR,
-                        store_op: ash::vk::AttachmentStoreOp::STORE,
-                        stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
-                        stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                        initial_layout: ash::vk::ImageLayout::UNDEFINED,
-                        final_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
-                        ..Default::default()
-                    }, ash::vk::AttachmentDescription {
-                        format: Self::find_depth_format(device),
-                        samples: ash::vk::SampleCountFlags::TYPE_1,
-                        load_op: ash::vk::AttachmentLoadOp::CLEAR,
-                        store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                        stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
-                        stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                        initial_layout: ash::vk::ImageLayout::UNDEFINED,
-                        final_layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        ..Default::default()
-                    }])
+                    .attachments(&[
+                        ash::vk::AttachmentDescription {
+                            format: swapchain_image_format,
+                            samples: ash::vk::SampleCountFlags::TYPE_1,
+                            load_op: ash::vk::AttachmentLoadOp::CLEAR,
+                            store_op: ash::vk::AttachmentStoreOp::STORE,
+                            stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
+                            stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                            initial_layout: ash::vk::ImageLayout::UNDEFINED,
+                            final_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
+                            ..Default::default()
+                        },
+                        ash::vk::AttachmentDescription {
+                            format: Self::find_depth_format(device),
+                            samples: ash::vk::SampleCountFlags::TYPE_1,
+                            load_op: ash::vk::AttachmentLoadOp::CLEAR,
+                            store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                            stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
+                            stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                            initial_layout: ash::vk::ImageLayout::UNDEFINED,
+                            final_layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                            ..Default::default()
+                        },
+                    ])
                     .subpasses(&[ash::vk::SubpassDescription::builder()
                         .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
                         .color_attachments(&[ash::vk::AttachmentReference {
@@ -402,7 +400,9 @@ impl Swapchain {
                         dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE
                             | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
                         ..Default::default()
-                    }]), None)?
+                    }]),
+                None,
+            )?
         })
     }
 
@@ -426,7 +426,8 @@ impl Swapchain {
                     .layers(1);
 
                 unsafe {
-                    logical_device.create_framebuffer(&framebuffer_info, None)
+                    logical_device
+                        .create_framebuffer(&framebuffer_info, None)
                         .map_err(|e| log::error!("Unable to create framebuffer: {}", e))
                         .unwrap() // TODO: fix unwrap?
                 }
@@ -437,16 +438,19 @@ impl Swapchain {
     fn create_sync_objects(
         logical_device: &ash::Device,
         swapchain_images: &Vec<ash::vk::Image>,
-    ) -> anyhow::Result<(
-        Vec<ash::vk::Semaphore>,
-        Vec<ash::vk::Semaphore>,
-        Vec<ash::vk::Fence>,
-        Vec<ash::vk::Fence>,
-    ), RenderError> {
+    ) -> anyhow::Result<
+        (
+            Vec<ash::vk::Semaphore>,
+            Vec<ash::vk::Semaphore>,
+            Vec<ash::vk::Fence>,
+            Vec<ash::vk::Fence>,
+        ),
+        RenderError,
+    > {
         let semaphore_info = ash::vk::SemaphoreCreateInfo::builder();
 
-        let fence_info = ash::vk::FenceCreateInfo::builder()
-            .flags(ash::vk::FenceCreateFlags::SIGNALED);
+        let fence_info =
+            ash::vk::FenceCreateInfo::builder().flags(ash::vk::FenceCreateFlags::SIGNALED);
 
         let mut image_available_semaphores = Vec::new();
         let mut render_finished_semaphore = Vec::new();
@@ -454,32 +458,17 @@ impl Swapchain {
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
             unsafe {
-                image_available_semaphores.push(
-                    logical_device.create_semaphore(
-                        &semaphore_info,
-                        None,
-                    )?
-                );
+                image_available_semaphores
+                    .push(logical_device.create_semaphore(&semaphore_info, None)?);
 
-                render_finished_semaphore.push(
-                    logical_device.create_semaphore(
-                        &semaphore_info,
-                        None,
-                    )?
-                );
+                render_finished_semaphore
+                    .push(logical_device.create_semaphore(&semaphore_info, None)?);
 
-                in_flight_fences.push(
-                    logical_device.create_fence(
-                        &fence_info,
-                        None,
-                    )?
-                );
+                in_flight_fences.push(logical_device.create_fence(&fence_info, None)?);
             }
         }
 
-        let images_in_flight = vec![
-            ash::vk::Fence::null(); swapchain_images.len()
-        ];
+        let images_in_flight = vec![ash::vk::Fence::null(); swapchain_images.len()];
 
         Ok((
             image_available_semaphores,
@@ -500,7 +489,9 @@ impl Swapchain {
                     && available_format.color_space == ash::vk::ColorSpaceKHR::SRGB_NONLINEAR
             })
             .unwrap_or_else(|| {
-                log::warn!("Could not find appropriate surface format, returning first available format");
+                log::warn!(
+                    "Could not find appropriate surface format, returning first available format"
+                );
                 available_formats[0]
             });
 
@@ -520,7 +511,7 @@ impl Swapchain {
                 log::warn!("Could not find desired present mode, defaulting to FIFO");
                 ash::vk::PresentModeKHR::FIFO
             });
-        
+
         present_mode
     }
 
@@ -533,19 +524,13 @@ impl Swapchain {
         } else {
             ash::vk::Extent2D {
                 width: std::cmp::max(
-                capabilities.min_image_extent.width,
-                std::cmp::min(
-                    capabilities.max_image_extent.width,
-                    window_extent.width,
-                    ),
+                    capabilities.min_image_extent.width,
+                    std::cmp::min(capabilities.max_image_extent.width, window_extent.width),
                 ),
                 height: std::cmp::max(
-                capabilities.min_image_extent.height,
-                std::cmp::min(
-                    capabilities.max_image_extent.height,
-                    window_extent.height,
-                    ),
-                )
+                    capabilities.min_image_extent.height,
+                    std::cmp::min(capabilities.max_image_extent.height, window_extent.height),
+                ),
             }
         }
     }
@@ -587,7 +572,9 @@ impl Drop for Swapchain {
                 .iter()
                 .for_each(|f| self.device.logical_device.destroy_framebuffer(*f, None));
 
-            self.device.logical_device.destroy_render_pass(self.render_pass, None);
+            self.device
+                .logical_device
+                .destroy_render_pass(self.render_pass, None);
 
             self.render_finished_semaphores
                 .iter()

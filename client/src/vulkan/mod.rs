@@ -1,5 +1,5 @@
-pub mod descriptor_set;
 mod buffer;
+pub mod descriptor_set;
 mod device;
 mod image_view;
 mod instance;

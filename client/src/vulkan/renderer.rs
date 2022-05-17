@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use crate::{window::Window, vulkan::MAX_FRAMES_IN_FLIGHT};
+use crate::{vulkan::MAX_FRAMES_IN_FLIGHT, window::Window};
 
-use super::{RenderError, Device, Swapchain};
+use super::{Device, RenderError, Swapchain};
 
 pub struct Renderer {
     pub device: Rc<Device>,
@@ -19,7 +19,8 @@ impl Renderer {
 
         let swapchain = Swapchain::new(device.clone(), window_extent, None)?;
 
-        let command_buffers = Self::create_command_buffers(&device.logical_device, device.command_pool)?;
+        let command_buffers =
+            Self::create_command_buffers(&device.logical_device, device.command_pool)?;
 
         Ok(Self {
             device,
@@ -31,15 +32,16 @@ impl Renderer {
         })
     }
 
-    pub fn begin_frame(&mut self, window: &Window) -> anyhow::Result<Option<ash::vk::CommandBuffer>, RenderError> {
+    pub fn begin_frame(
+        &mut self,
+        window: &Window,
+    ) -> anyhow::Result<Option<ash::vk::CommandBuffer>, RenderError> {
         assert!(
             !self.is_frame_started,
             "Cannot call begin_frame while already in progress"
         );
 
-        let result = unsafe {
-            self.swapchain.acquire_next_image()?
-        };
+        let result = unsafe { self.swapchain.acquire_next_image()? };
 
         match result {
             Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -70,7 +72,9 @@ impl Renderer {
         let begin_info = ash::vk::CommandBufferBeginInfo::builder();
 
         unsafe {
-            self.device.logical_device.begin_command_buffer(command_buffer, &begin_info)?
+            self.device
+                .logical_device
+                .begin_command_buffer(command_buffer, &begin_info)?
         };
 
         Ok(Some(command_buffer))
@@ -85,17 +89,15 @@ impl Renderer {
         let command_buffer = self.current_command_buffer();
 
         unsafe {
-            self.device.logical_device.end_command_buffer(command_buffer)?
+            self.device
+                .logical_device
+                .end_command_buffer(command_buffer)?
         };
 
-        self.swapchain.submit_command_buffers(
-            command_buffer,
-            self.current_image_index,
-        )?;
+        self.swapchain
+            .submit_command_buffers(command_buffer, self.current_image_index)?;
 
-        unsafe {
-            self.device.logical_device.device_wait_idle()?
-        };
+        unsafe { self.device.logical_device.device_wait_idle()? };
 
         self.is_frame_started = false;
         self.current_frame_index = (self.current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -184,7 +186,9 @@ impl Renderer {
         );
 
         unsafe {
-            self.device.logical_device.cmd_end_render_pass(command_buffer);
+            self.device
+                .logical_device
+                .cmd_end_render_pass(command_buffer);
         }
     }
 
@@ -197,16 +201,12 @@ impl Renderer {
 
         log::debug!("Recreating vulkan swapchain");
 
-        unsafe {
-            self.device
-                .logical_device
-                .device_wait_idle()?
-        };
+        unsafe { self.device.logical_device.device_wait_idle()? };
 
         let new_swapchain = Swapchain::new(
             self.device.clone(),
             extent,
-            self.swapchain.swapchain_khr.take()
+            self.swapchain.swapchain_khr.take(),
         )?;
 
         self.swapchain.compare_swap_formats(&new_swapchain)?;
@@ -234,9 +234,7 @@ impl Renderer {
             .command_pool(command_pool)
             .command_buffer_count(MAX_FRAMES_IN_FLIGHT as u32);
 
-        let command_buffers = unsafe {
-            device.allocate_command_buffers(&alloc_info)?
-        };
+        let command_buffers = unsafe { device.allocate_command_buffers(&alloc_info)? };
 
         Ok(command_buffers)
     }
@@ -270,7 +268,10 @@ impl Drop for Renderer {
         log::debug!("Dropping vulkan renderer");
 
         unsafe {
-            self.device.logical_device.free_command_buffers(self.device.command_pool, &self.command_buffers);
+            self.device
+                .logical_device
+                .free_command_buffers(self.device.command_pool, &self.command_buffers);
+
             self.command_buffers.clear();
         }
     }

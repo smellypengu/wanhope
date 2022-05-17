@@ -1,6 +1,6 @@
-use std::{rc::Rc, ffi::CString};
+use std::{ffi::CString, rc::Rc};
 
-use super::{Device, ShaderModule, RenderError};
+use super::{Device, RenderError, ShaderModule};
 
 struct PipelineInfo {
     binding_descriptions: Vec<ash::vk::VertexInputBindingDescription>,
@@ -78,7 +78,7 @@ impl PipelineBuilder {
             logic_op: ash::vk::LogicOp::COPY,
             attachment_count: 1,
             p_attachments: color_blend_attachments.as_ptr(),
-            blend_constants: [0.0, 0.0 ,0.0, 0.0],
+            blend_constants: [0.0, 0.0, 0.0, 0.0],
             ..Default::default()
         };
 
@@ -122,9 +122,7 @@ impl PipelineBuilder {
             subpass: 0,
         };
 
-        Self {
-            pipeline_info,
-        }
+        Self { pipeline_info }
     }
 
     pub fn binding_descriptions(
@@ -146,18 +144,20 @@ impl PipelineBuilder {
     }
 
     pub fn enable_alpha_blending(mut self) -> PipelineBuilder {
-        self.pipeline_info.color_blend_attachments = vec![ash::vk::PipelineColorBlendAttachmentState {
-            blend_enable: ash::vk::TRUE,
-            src_color_blend_factor: ash::vk::BlendFactor::SRC_ALPHA,
-            dst_color_blend_factor: ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
-            color_blend_op: ash::vk::BlendOp::ADD,
-            src_alpha_blend_factor: ash::vk::BlendFactor::ONE,
-            dst_alpha_blend_factor: ash::vk::BlendFactor::ZERO,
-            alpha_blend_op: ash::vk::BlendOp::ADD,
-            color_write_mask: ash::vk::ColorComponentFlags::RGBA,
-        }];
+        self.pipeline_info.color_blend_attachments =
+            vec![ash::vk::PipelineColorBlendAttachmentState {
+                blend_enable: ash::vk::TRUE,
+                src_color_blend_factor: ash::vk::BlendFactor::SRC_ALPHA,
+                dst_color_blend_factor: ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+                color_blend_op: ash::vk::BlendOp::ADD,
+                src_alpha_blend_factor: ash::vk::BlendFactor::ONE,
+                dst_alpha_blend_factor: ash::vk::BlendFactor::ZERO,
+                alpha_blend_op: ash::vk::BlendOp::ADD,
+                color_write_mask: ash::vk::ColorComponentFlags::RGBA,
+            }];
 
-        self.pipeline_info.color_blend_info.p_attachments = self.pipeline_info.color_blend_attachments.as_ptr();
+        self.pipeline_info.color_blend_info.p_attachments =
+            self.pipeline_info.color_blend_attachments.as_ptr();
 
         self
     }
@@ -170,15 +170,8 @@ impl PipelineBuilder {
         render_pass: &ash::vk::RenderPass,
         pipeline_layout: &ash::vk::PipelineLayout,
     ) -> anyhow::Result<Rc<Pipeline>, RenderError> {
-        let vert_shader_module = ShaderModule::new(
-            device.clone(),
-            vert_file_path,
-        )?;
-
-        let frag_shader_module = ShaderModule::new(
-            device.clone(),
-            frag_file_path,
-        )?;
+        let vert_shader_module = ShaderModule::new(device.clone(), vert_file_path)?;
+        let frag_shader_module = ShaderModule::new(device.clone(), frag_file_path)?;
 
         let entry_point_name = CString::new("main").unwrap();
 
@@ -196,10 +189,7 @@ impl PipelineBuilder {
             ..Default::default()
         };
 
-        let shader_stages = [
-            vert_shader_stage_info, 
-            frag_shader_stage_info,
-        ];
+        let shader_stages = [vert_shader_stage_info, frag_shader_stage_info];
 
         let vertex_input_info = ash::vk::PipelineVertexInputStateCreateInfo::builder()
             .vertex_binding_descriptions(&self.pipeline_info.binding_descriptions)
@@ -222,11 +212,15 @@ impl PipelineBuilder {
             .base_pipeline_handle(ash::vk::Pipeline::null());
 
         let graphics_pipeline = unsafe {
-            device.logical_device.create_graphics_pipelines(
-                ash::vk::PipelineCache::null(),
-                std::slice::from_ref(&pipeline_info),
-                None
-            ).map_err(|e| log::error!("Unable to create graphics pipeline: {:?}", e)).unwrap()[0] // fix unwrap?
+            device
+                .logical_device
+                .create_graphics_pipelines(
+                    ash::vk::PipelineCache::null(),
+                    std::slice::from_ref(&pipeline_info),
+                    None,
+                )
+                .map_err(|e| log::error!("Unable to create graphics pipeline: {:?}", e))
+                .unwrap()[0] // fix unwrap?
         };
 
         Ok(Rc::new(Pipeline {
@@ -262,9 +256,11 @@ impl Pipeline {
 impl Drop for Pipeline {
     fn drop(&mut self) {
         log::debug!("Dropping vulkan pipeline");
-        
+
         unsafe {
-            self.device.logical_device.destroy_pipeline(self.graphics_pipeline, None);
+            self.device
+                .logical_device
+                .destroy_pipeline(self.graphics_pipeline, None);
         }
     }
 }

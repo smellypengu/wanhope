@@ -10,7 +10,12 @@ pub struct TransformComponent {
 
 impl TransformComponent {
     pub fn mat4(&self) -> glam::Mat4 {
-        let quat = glam::Quat::from_euler(glam::EulerRot::XYZ, self.rotation.x, self.rotation.y, self.rotation.z);
+        let quat = glam::Quat::from_euler(
+            glam::EulerRot::XYZ,
+            self.rotation.x,
+            self.rotation.y,
+            self.rotation.z,
+        );
 
         glam::Mat4::from_scale_rotation_translation(self.scale, quat, self.translation)
     }
@@ -51,13 +56,11 @@ impl GameObject {
                 translation: glam::Vec3::ZERO,
                 scale: glam::Vec3::ONE,
                 rotation: glam::Vec3::ZERO,
-            }
+            },
         };
 
         // perhaps get fix the unsafe
-        let id = unsafe {
-            CURRENT_ID
-        };
+        let id = unsafe { CURRENT_ID };
 
         unsafe {
             CURRENT_ID += 1;
@@ -80,7 +83,8 @@ impl GameObject {
                 translation: glam::Vec3::ZERO,
                 scale: glam::vec3(radius, 0.0, 0.0),
                 rotation: glam::Vec3::ZERO,
-            }));
+            }),
+        );
 
         game_object.point_light = Some(PointLightComponent {
             light_intensity: intensity,

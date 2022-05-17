@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use super::{RenderError, Device};
+use super::{Device, RenderError};
 
 pub struct ShaderModule {
     device: Rc<Device>,
@@ -14,17 +14,15 @@ impl ShaderModule {
     ) -> anyhow::Result<Rc<Self>, RenderError> {
         let code = Self::read_file(file_path);
 
-        let create_info = ash::vk::ShaderModuleCreateInfo::builder()
-            .code(&code);
+        let create_info = ash::vk::ShaderModuleCreateInfo::builder().code(&code);
 
         let module = unsafe {
-            device.logical_device.create_shader_module(&create_info, None)?
+            device
+                .logical_device
+                .create_shader_module(&create_info, None)?
         };
 
-        Ok(Rc::new(Self { 
-            device,
-            module,
-        }))
+        Ok(Rc::new(Self { device, module }))
     }
 
     fn read_file<P: AsRef<std::path::Path>>(file_path: P) -> Vec<u32> {
@@ -53,7 +51,9 @@ impl Drop for ShaderModule {
         log::debug!("Dropping vulkan shader module");
 
         unsafe {
-            self.device.logical_device.destroy_shader_module(self.module, None);
+            self.device
+                .logical_device
+                .destroy_shader_module(self.module, None);
         }
     }
 }

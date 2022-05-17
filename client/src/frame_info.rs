@@ -8,7 +8,7 @@ pub const MAX_LIGHTS: usize = 10;
 #[repr(C)]
 pub struct PointLight {
     pub position: glam::Vec4, // ignore w
-    pub color: glam::Vec4, // w is intensity
+    pub color: glam::Vec4,    // w is intensity
 }
 
 #[derive(PartialEq)]

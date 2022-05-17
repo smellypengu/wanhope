@@ -41,20 +41,19 @@ impl DescriptorSetLayoutBuilder {
     }
 
     pub unsafe fn build(self) -> anyhow::Result<Rc<DescriptorSetLayout>, RenderError> {
-        let DescriptorSetLayoutBuilder {
-            device,
-            bindings
-        } = self;
+        let DescriptorSetLayoutBuilder { device, bindings } = self;
 
         let mut set_layout_bindings = Vec::new();
         for binding in bindings.values() {
             set_layout_bindings.push(*binding);
         }
 
-        let layout_info = ash::vk::DescriptorSetLayoutCreateInfo::builder()
-            .bindings(&set_layout_bindings);
+        let layout_info =
+            ash::vk::DescriptorSetLayoutCreateInfo::builder().bindings(&set_layout_bindings);
 
-        let layout = device.logical_device.create_descriptor_set_layout(&layout_info, None)?;
+        let layout = device
+            .logical_device
+            .create_descriptor_set_layout(&layout_info, None)?;
 
         Ok(Rc::new(DescriptorSetLayout {
             device,
@@ -65,9 +64,7 @@ impl DescriptorSetLayoutBuilder {
 }
 
 impl DescriptorSetLayout {
-    pub fn new(
-        device: Rc<Device>,
-    ) -> DescriptorSetLayoutBuilder {
+    pub fn new(device: Rc<Device>) -> DescriptorSetLayoutBuilder {
         DescriptorSetLayoutBuilder {
             device,
             bindings: HashMap::new(),
@@ -85,8 +82,9 @@ impl Drop for DescriptorSetLayout {
         log::debug!("Dropping vulkan descriptor set layout");
 
         unsafe {
-            self.device.logical_device.destroy_descriptor_set_layout(self.layout, None);
+            self.device
+                .logical_device
+                .destroy_descriptor_set_layout(self.layout, None);
         }
     }
 }
-
