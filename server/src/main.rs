@@ -65,10 +65,10 @@ async fn main() -> crate::Result<()> {
                     // inform all other clients that a new client joined
                     for i in 0..MAX_CLIENTS {
                         if i != slot as usize {
-                            if clients[i].addr.is_some() {
+                            if let Some(addr) = clients[i].addr {
                                 tx.send((
                                     [common::ServerMessage::ClientJoining as u8].to_vec(),
-                                    clients[i].addr.unwrap(),
+                                    addr,
                                 ))
                                 .await?;
                             }

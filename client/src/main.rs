@@ -22,7 +22,7 @@ fn main() {
 
     let event_loop = winit::event_loop::EventLoop::new();
 
-    let app = App::new(&event_loop);
+    let app = App::new(&event_loop).unwrap();
 
-    App::run(app, event_loop);
+    App::run(app, event_loop).unwrap();
 }
