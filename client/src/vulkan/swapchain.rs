@@ -8,7 +8,7 @@ pub struct Swapchain {
     device: Rc<Device>,
     swapchain: ash::extensions::khr::Swapchain,
     pub swapchain_khr: Option<ash::vk::SwapchainKHR>,
-    swapchain_image_format: ash::vk::Format,
+    pub swapchain_image_format: ash::vk::Format,
     swapchain_depth_format: ash::vk::Format,
     pub swapchain_extent: ash::vk::Extent2D,
     pub swapchain_images: Vec<ash::vk::Image>,
@@ -364,7 +364,7 @@ impl Swapchain {
                             stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
                             stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
                             initial_layout: ash::vk::ImageLayout::UNDEFINED,
-                            final_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
+                            final_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                             ..Default::default()
                         },
                         ash::vk::AttachmentDescription {

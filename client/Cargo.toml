@@ -14,12 +14,17 @@ glam = "0.20.5"
 
 tobj = "3.2.2"
 
+egui = "0.16.0"
+egui-winit = "0.16.0"
+
 ash = "0.37.0"
 ash-window = "0.10.0"
 
 winit = "0.26.1"
 
 rand = "0.8.5"
+
+bytemuck = "1.7.3"
 
 indexmap = "1.8.1"
 ordered-float = "3.0.0"

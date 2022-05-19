@@ -9,7 +9,7 @@ where
     device: Rc<Device>,
     buffer: ash::vk::Buffer,
     memory: ash::vk::DeviceMemory,
-    mapped: *mut c_void,
+    pub mapped: *mut c_void,
     capacity: usize,
     coherent: bool,
 

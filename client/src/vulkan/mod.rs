@@ -1,6 +1,7 @@
 mod buffer;
 pub mod descriptor_set;
 mod device;
+pub mod egui;
 mod image_view;
 mod instance;
 mod model;

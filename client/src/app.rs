@@ -17,6 +17,7 @@ use crate::{
     systems::{PointLightSystem, SimpleRenderSystem},
     vulkan::{
         descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
+        egui::EGuiIntegration,
         Buffer, Device, Model, RenderError, Renderer, MAX_FRAMES_IN_FLIGHT,
     },
     window::{Window, WindowSettings},
@@ -28,6 +29,8 @@ pub struct App {
     device: Rc<Device>,
 
     renderer: Renderer,
+
+    egui_integration: EGuiIntegration,
 
     global_pool: Rc<DescriptorPool>,
     global_set_layout: Rc<DescriptorSetLayout>,
@@ -62,6 +65,13 @@ impl App {
         )?;
 
         let renderer = Renderer::new(device.clone(), &window)?;
+
+        let egui_integration = EGuiIntegration::new(
+            &window,
+            device.clone(),
+            &renderer.swapchain,
+            renderer.swapchain.swapchain_image_format,
+        )?;
 
         let global_pool = unsafe {
             DescriptorPool::new(device.clone())
@@ -138,6 +148,8 @@ impl App {
 
             renderer,
 
+            egui_integration,
+
             global_pool,
             global_set_layout,
 
@@ -172,6 +184,7 @@ impl App {
             match event {
                 winit::event::Event::WindowEvent { event, .. } => {
                     input.update(&event);
+                    app.egui_integration.on_event(&event);
 
                     match event {
                         winit::event::WindowEvent::CloseRequested => {
@@ -181,14 +194,6 @@ impl App {
                         winit::event::WindowEvent::Resized(size) => {
                             if size != app.window.inner().inner_size() {
                                 app.resize().unwrap(); // TODO: fix unwrap?
-                            }
-                        }
-                        winit::event::WindowEvent::KeyboardInput { input, .. } => {
-                            match input.virtual_keycode {
-                                Some(winit::event::VirtualKeyCode::C) => {
-                                    app.connect().unwrap(); // TODO: fix unwrap?
-                                }
-                                _ => {}
                             }
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
@@ -421,6 +426,43 @@ impl App {
 
                 self.renderer.end_swapchain_render_pass(command_buffer);
 
+                // egui
+                self.egui_integration.begin_frame(&self.window);
+
+                egui::TopBottomPanel::top("top_panel").show(
+                    &self.egui_integration.egui_ctx,
+                    |ui| {
+                        egui::menu::bar(ui, |ui| {
+                            ui.menu_button("File", |ui| if ui.button("Test").clicked() {});
+                        });
+                    },
+                );
+
+                egui::SidePanel::left("my_side_panel").show(
+                    &self.egui_integration.egui_ctx.clone(),
+                    |ui| {
+                        ui.heading("Wanhope");
+                        ui.separator();
+                        if !self.connected {
+                            if ui.button("Connect").clicked() {
+                                self.connect().unwrap(); // TODO: fix unwrap?
+                            };
+                        } else {
+                            ui.label(format!("Connected to {}", self.socket.as_ref().unwrap().peer_addr().unwrap())); // unwrap galore
+                        }
+                        ui.separator();
+                    },
+                );
+
+                let shapes = self.egui_integration.end_frame(&mut self.window);
+                let clipped_meshes = self.egui_integration.egui_ctx.tessellate(shapes);
+
+                self.egui_integration.paint(
+                    command_buffer,
+                    self.renderer.image_index(),
+                    clipped_meshes,
+                )?;
+
                 self.renderer.end_frame()?;
             }
             None => {}
@@ -430,7 +472,15 @@ impl App {
     }
 
     pub fn resize(&mut self) -> anyhow::Result<(), AppError> {
-        Ok(self.renderer.recreate_swapchain(&self.window)?)
+        self.renderer.recreate_swapchain(&self.window)?;
+
+        self.egui_integration.update_swapchain(
+            &self.window,
+            &self.renderer.swapchain,
+            self.renderer.swapchain.swapchain_image_format,
+        )?;
+
+        Ok(())
     }
 
     fn load_game_objects(device: Rc<Device>) -> anyhow::Result<HashMap<u8, GameObject>, AppError> {
