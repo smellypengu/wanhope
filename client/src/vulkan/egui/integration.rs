@@ -9,7 +9,7 @@ use crate::{
 };
 
 pub struct EGuiIntegration {
-    pub egui_ctx: egui::CtxRef,
+    pub egui_ctx: egui::Context,
     pub egui_winit: egui_winit::State,
 
     physical_width: u32,
@@ -30,12 +30,14 @@ pub struct EGuiIntegration {
     font_image_staging_buffer: Buffer<u8>,
     font_image: (ash::vk::Image, ash::vk::DeviceMemory),
     font_image_view: Option<Rc<ImageView>>,
-    font_image_size: (u64, u64),
-    font_image_version: u64,
+    font_image_size: [usize; 2],
     font_descriptor_sets: Vec<ash::vk::DescriptorSet>,
 
     user_texture_layout: Rc<DescriptorSetLayout>,
     user_textures: Vec<Option<ash::vk::DescriptorSet>>,
+
+    shapes: Vec<egui::epaint::ClippedShape>,
+    textures_delta: egui::TexturesDelta,
 }
 
 impl EGuiIntegration {
@@ -45,7 +47,7 @@ impl EGuiIntegration {
         swapchain: &Swapchain,
         surface_format: ash::vk::Format,
     ) -> anyhow::Result<Self, RenderError> {
-        let egui_ctx = egui::CtxRef::default();
+        let egui_ctx = egui::Context::default();
 
         let descriptor_pool = unsafe {
             DescriptorPool::new(device.clone())
@@ -177,7 +179,7 @@ impl EGuiIntegration {
 
         Ok(Self {
             egui_ctx,
-            egui_winit: egui_winit::State::new(&window.inner()),
+            egui_winit: egui_winit::State::new(1024, &window.inner()),
 
             physical_width: window.inner().inner_size().width,
             physical_height: window.inner().inner_size().height,
@@ -197,12 +199,14 @@ impl EGuiIntegration {
             font_image_staging_buffer,
             font_image: Default::default(),
             font_image_view: Default::default(),
-            font_image_size: (0, 0),
-            font_image_version: 0,
+            font_image_size: [0; 2],
             font_descriptor_sets: Vec::new(),
 
             user_texture_layout,
             user_textures,
+
+            shapes: Vec::new(),
+            textures_delta: Default::default(),
         })
     }
 
@@ -230,23 +234,37 @@ impl EGuiIntegration {
         self.egui_winit.on_event(&self.egui_ctx, event)
     }
 
-    pub fn end_frame(&mut self, window: &Window) -> Vec<egui::epaint::ClippedShape> {
-        let (egui_output, shapes) = self.egui_ctx.end_frame();
-        self.egui_winit
-            .handle_output(&window.inner(), &self.egui_ctx, egui_output);
+    pub fn end_frame(&mut self, window: &Window) {
+        let full_output = self.egui_ctx.end_frame();
 
-        shapes
+        self.egui_winit.handle_platform_output(
+            &window.inner(),
+            &self.egui_ctx,
+            full_output.platform_output,
+        );
+
+        self.shapes = full_output.shapes;
+        self.textures_delta.append(full_output.textures_delta);
     }
 
     pub fn paint(
         &mut self,
         command_buffer: ash::vk::CommandBuffer,
         swapchain_image_index: usize,
-        clipped_meshes: Vec<egui::ClippedMesh>,
     ) -> anyhow::Result<(), RenderError> {
+        let shapes = std::mem::take(&mut self.shapes);
+        let textures_delta = std::mem::take(&mut self.textures_delta);
+
+        let clipped_primitives = self.egui_ctx.tessellate(shapes);
+
         let index = swapchain_image_index;
 
-        self.upload_font_texture(command_buffer, &self.egui_ctx.font_image())?;
+        if textures_delta.set.contains_key(&egui::TextureId::Managed(0)) {
+            self.upload_font_texture(
+                command_buffer,
+                &textures_delta.set[&egui::TextureId::Managed(0)],
+            )?;
+        }
 
         let mut vertex_buffer_ptr = self.vertex_buffers[index].mapped;
 
@@ -319,7 +337,14 @@ impl EGuiIntegration {
         let mut vertex_base = 0;
         let mut index_base = 0;
 
-        for egui::ClippedMesh(rect, mesh) in clipped_meshes {
+        for cm in clipped_primitives.iter() {
+            let mesh = match &cm.primitive {
+                egui::epaint::Primitive::Mesh(mesh) => mesh,
+                egui::epaint::Primitive::Callback(_) => {
+                    continue;
+                }
+            };
+
             unsafe {
                 if let egui::TextureId::User(id) = mesh.texture_id {
                     if let Some(descriptor_set) = self.user_textures[id as usize] {
@@ -385,7 +410,7 @@ impl EGuiIntegration {
             index_buffer_ptr = index_buffer_ptr_next;
 
             unsafe {
-                let min = rect.min;
+                let min = cm.clip_rect.min;
                 let min = egui::Pos2 {
                     x: min.x * self.scale_factor as f32,
                     y: min.y * self.scale_factor as f32,
@@ -396,7 +421,7 @@ impl EGuiIntegration {
                     y: f32::clamp(min.y, 0.0, self.physical_height as f32),
                 };
 
-                let max = rect.max;
+                let max = cm.clip_rect.max;
                 let max = egui::Pos2 {
                     x: max.x * self.scale_factor as f32,
                     y: max.y * self.scale_factor as f32,
@@ -448,23 +473,30 @@ impl EGuiIntegration {
     fn upload_font_texture(
         &mut self,
         command_buffer: ash::vk::CommandBuffer,
-        texture: &egui::FontImage,
+        delta: &egui::epaint::ImageDelta,
     ) -> anyhow::Result<(), RenderError> {
-        debug_assert_eq!(texture.pixels.len(), texture.width * texture.height);
+        let pixels: Vec<(u8, u8, u8, u8)> = match &delta.image {
+            egui::ImageData::Color(image) => {
+                assert_eq!(
+                    image.width() * image.height(),
+                    image.pixels.len(),
+                    "Mismatch between texture size and texel count"
+                );
 
-        if texture.version == self.font_image_version {
-            return Ok(());
-        }
+                image.pixels.iter().map(|color| color.to_tuple()).collect()
+            }
+            egui::ImageData::Font(image) => {
+                let gamma = 1.0;
+                image
+                    .srgba_pixels(gamma)
+                    .map(|color| color.to_tuple())
+                    .collect()
+            }
+        };
 
-        unsafe {
-            self.device.logical_device.device_wait_idle()?;
-        }
-
-        let dimensions = (texture.width as u64, texture.height as u64);
-        let data = texture
-            .pixels
+        let data = pixels
             .iter()
-            .flat_map(|&r| vec![r, r, r, r])
+            .flat_map(|&r| vec![r.0, r.1, r.2, r.3])
             .collect::<Vec<u8>>();
 
         unsafe {
@@ -482,7 +514,7 @@ impl EGuiIntegration {
 
         self.font_image_staging_buffer = Buffer::new(
             self.device.clone(),
-            (dimensions.0 * dimensions.1 * 4) as usize,
+            (delta.image.width() * delta.image.height() * 4) as usize,
             ash::vk::BufferUsageFlags::TRANSFER_SRC,
             ash::vk::MemoryPropertyFlags::HOST_VISIBLE
                 | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
@@ -503,8 +535,8 @@ impl EGuiIntegration {
                     .mip_levels(1)
                     .array_layers(1)
                     .extent(ash::vk::Extent3D {
-                        width: dimensions.0 as u32,
-                        height: dimensions.1 as u32,
+                        width: delta.image.width() as u32,
+                        height: delta.image.height() as u32,
                         depth: 1,
                     }),
                 ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -518,8 +550,7 @@ impl EGuiIntegration {
             ash::vk::ImageAspectFlags::COLOR,
         )?);
 
-        self.font_image_size = dimensions;
-        self.font_image_version = texture.version;
+        self.font_image_size = delta.image.size();
 
         self.font_descriptor_sets.clear();
         for descriptor_layout in self.descriptor_set_layouts.iter_mut() {
@@ -582,8 +613,8 @@ impl EGuiIntegration {
                             .build(),
                     )
                     .image_extent(ash::vk::Extent3D {
-                        width: dimensions.0 as u32,
-                        height: dimensions.1 as u32,
+                        width: delta.image.width() as u32,
+                        height: delta.image.height() as u32,
                         depth: 1,
                     })
                     .build()],

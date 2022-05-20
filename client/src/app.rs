@@ -454,13 +454,11 @@ impl App {
                     },
                 );
 
-                let shapes = self.egui_integration.end_frame(&mut self.window);
-                let clipped_meshes = self.egui_integration.egui_ctx.tessellate(shapes);
+                self.egui_integration.end_frame(&mut self.window);
 
                 self.egui_integration.paint(
                     command_buffer,
                     self.renderer.image_index(),
-                    clipped_meshes,
                 )?;
 
                 self.renderer.end_frame()?;
