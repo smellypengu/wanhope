@@ -179,7 +179,10 @@ impl EGuiIntegration {
 
         Ok(Self {
             egui_ctx,
-            egui_winit: egui_winit::State::new(1024, &window.inner()),
+            egui_winit: egui_winit::State::new(
+                device.properties.limits.max_image_dimension2_d as usize,
+                &window.inner(),
+            ),
 
             physical_width: window.inner().inner_size().width,
             physical_height: window.inner().inner_size().height,
@@ -259,7 +262,10 @@ impl EGuiIntegration {
 
         let index = swapchain_image_index;
 
-        if textures_delta.set.contains_key(&egui::TextureId::Managed(0)) {
+        if textures_delta
+            .set
+            .contains_key(&egui::TextureId::Managed(0))
+        {
             self.upload_font_texture(
                 command_buffer,
                 &textures_delta.set[&egui::TextureId::Managed(0)],

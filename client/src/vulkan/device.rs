@@ -29,7 +29,7 @@ pub struct Device {
     surface: ash::extensions::khr::Surface,
     pub surface_khr: ash::vk::SurfaceKHR,
     physical_device: ash::vk::PhysicalDevice,
-    properties: ash::vk::PhysicalDeviceProperties,
+    pub properties: ash::vk::PhysicalDeviceProperties,
     pub logical_device: ash::Device,
     pub command_pool: ash::vk::CommandPool,
     pub graphics_queue: ash::vk::Queue,
