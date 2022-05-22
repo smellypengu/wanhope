@@ -21,7 +21,7 @@ use crate::{
         Buffer, Device, Model, RenderError, Renderer, MAX_FRAMES_IN_FLIGHT,
     },
     window::{Window, WindowSettings},
-    FrameInfo, GlobalUbo, Input, KeyboardMovementController, PointLight, MAX_LIGHTS,
+    FrameInfo, GlobalUbo, Input, KeyboardMovementController, PointLight, MAX_LIGHTS, network::Network,
 };
 
 pub struct App {
@@ -47,8 +47,7 @@ pub struct App {
 
     game_objects: HashMap<u8, GameObject>,
 
-    socket: Option<UdpSocket>,
-    connected: bool,
+    network: Network,
 }
 
 impl App {
@@ -165,8 +164,7 @@ impl App {
 
             game_objects,
 
-            socket: None,
-            connected: false,
+            network: Network::new(),
         })
     }
 
@@ -227,106 +225,16 @@ impl App {
         });
     }
 
-    pub fn connect(&mut self) -> anyhow::Result<(), AppError> {
-        if !self.connected {
-            let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-
-            let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-                "0.0.0.0:0"
-            } else {
-                "[::]:0"
-            }
-            .parse()
-            .unwrap();
-
-            self.socket = UdpSocket::bind(local_addr).ok();
-
-            if let Some(socket) = &self.socket {
-                match socket.connect(remote_addr) {
-                    Ok(_) => {
-                        // register as client in server
-
-                        match socket.send(&[common::ClientMessage::Join as u8]) {
-                            Ok(_) => {
-                                let mut response = vec![0u8; 2];
-                                match socket.recv(&mut response) {
-                                    Ok(len) => {
-                                        let join_result =
-                                            common::ServerMessage::try_from(response[0]).unwrap();
-
-                                        match join_result {
-                                            common::ServerMessage::JoinResult => {
-                                                if len > 1 as usize {
-                                                    println!("user id: {}", response[1]);
-
-                                                    self.connected = true;
-                                                } else {
-                                                    log::info!("Server did not let us in");
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    Err(_) => {
-                                        log::info!("Failed to recieve join response");
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                log::info!("Failed to send join request");
-                            }
-                        }
-                    }
-                    Err(_) => {
-                        log::info!("Connection refused");
-                    }
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     pub fn update(&mut self) -> anyhow::Result<(), AppError> {
-        match &self.socket {
-            Some(socket) => {
-                let mut data = vec![0u8; 1_024];
+        if let Some(server_message) = self.network.update()? {
+            match server_message {
+                common::ServerMessage::ClientJoining => {
+                    println!("a new client joined the server!");
 
-                // set to nonblocking so recv() call doesn't freeze app, probably temporary
-                socket.set_nonblocking(true)?;
-
-                match socket.recv(&mut data) {
-                    Ok(_len) => {
-                        let server_message = common::ServerMessage::try_from(data[0]).unwrap();
-
-                        match server_message {
-                            common::ServerMessage::ClientJoining => {
-                                println!("a new client joined the server!");
-
-                                self.spawn_game_object()?;
-                            }
-                            _ => {}
-                        }
-                    }
-                    Err(_) => {}
+                    self.spawn_game_object()?;
                 }
-
-                // let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
-                // let msg = common::serialize(&test_struct).unwrap();
-
-                // socket.send(&msg).unwrap();
-                // let mut data = vec![0u8; 1_000];
-                // let len = socket.recv(&mut data).unwrap();
-
-                // let deserialized: common::TestStruct = common::deserialize(&data[..len]).unwrap();
-
-                // println!(
-                //     "Received {} bytes:\n{:?}",
-                //     len,
-                //     deserialized,
-                // );
+                _ => {}
             }
-            None => {}
         }
 
         Ok(())
@@ -443,12 +351,12 @@ impl App {
                     |ui| {
                         ui.heading("Wanhope");
                         ui.separator();
-                        if !self.connected {
+                        if !self.network.connected {
                             if ui.button("Connect").clicked() {
-                                self.connect().unwrap(); // TODO: fix unwrap?
+                                self.network.connect().unwrap(); // TODO: fix unwrap?
                             };
                         } else {
-                            ui.label(format!("Connected to {}", self.socket.as_ref().unwrap().peer_addr().unwrap())); // unwrap galore
+                            ui.label(format!("Connected to {}", self.network.server_ip().unwrap())); // unwrap galore
                         }
                         ui.separator();
                     },

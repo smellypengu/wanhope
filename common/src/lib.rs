@@ -1,5 +1,7 @@
 // use serde::{Serialize, Deserialize};
 
+pub mod world;
+
 pub enum ClientMessage {
     Join,
     Leave,
