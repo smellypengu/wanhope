@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{camera::Camera, game_object::GameObject};
+use crate::game_object::GameObject;
+
+use super::Camera;
 
 pub const MAX_LIGHTS: usize = 10;
 

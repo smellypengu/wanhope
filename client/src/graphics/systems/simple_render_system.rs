@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{
+use crate::graphics::{
     vulkan::{Device, Pipeline, RenderError, Vertex},
     FrameInfo,
 };

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::vulkan::Model;
+use crate::graphics::vulkan::Model;
 
 pub struct TransformComponent {
     pub translation: glam::Vec3,

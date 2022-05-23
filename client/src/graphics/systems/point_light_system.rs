@@ -4,7 +4,7 @@ use glam::Vec4Swizzles;
 use indexmap::IndexMap;
 use ordered_float::OrderedFloat;
 
-use crate::{
+use crate::graphics::{
     vulkan::{Device, Pipeline, RenderError},
     FrameInfo, GlobalUbo, MAX_LIGHTS,
 };

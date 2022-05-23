@@ -1,11 +1,11 @@
 use std::{ffi::c_void, rc::Rc};
 
-use crate::{
+use crate::graphics::{
     vulkan::{
         descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
         Buffer, Device, ImageView, Pipeline, RenderError, Swapchain,
     },
-    window::Window,
+    Window,
 };
 
 pub struct EGuiIntegration {

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::{vulkan::MAX_FRAMES_IN_FLIGHT, window::Window};
+use crate::graphics::{vulkan::MAX_FRAMES_IN_FLIGHT, Window};
 
 use super::{Device, RenderError, Swapchain};
 

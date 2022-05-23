@@ -1,27 +1,21 @@
-use std::{
-    collections::HashMap,
-    f32::consts::PI,
-    ffi::CString,
-    io,
-    net::{SocketAddr, UdpSocket},
-    rc::Rc,
-    time::Instant,
-};
+use std::{collections::HashMap, f32::consts::PI, ffi::CString, io, rc::Rc, time::Instant};
 
 use glam::Vec4Swizzles;
 use rand::Rng;
 
 use crate::{
-    camera::Camera,
     game_object::{GameObject, TransformComponent},
-    systems::{PointLightSystem, SimpleRenderSystem},
-    vulkan::{
-        descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-        egui::EGuiIntegration,
-        Buffer, Device, Model, RenderError, Renderer, MAX_FRAMES_IN_FLIGHT,
+    graphics::{
+        systems::{PointLightSystem, SimpleRenderSystem},
+        vulkan::{
+            descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
+            egui::EGuiIntegration,
+            Buffer, Device, Model, RenderError, Renderer, MAX_FRAMES_IN_FLIGHT,
+        },
+        Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
     },
-    window::{Window, WindowSettings},
-    FrameInfo, GlobalUbo, Input, KeyboardMovementController, PointLight, MAX_LIGHTS, network::Network,
+    network::Network,
+    Input, KeyboardMovementController,
 };
 
 pub struct App {
@@ -356,7 +350,10 @@ impl App {
                                 self.network.connect().unwrap(); // TODO: fix unwrap?
                             };
                         } else {
-                            ui.label(format!("Connected to {}", self.network.server_ip().unwrap())); // unwrap galore
+                            ui.label(format!(
+                                "Connected to {}",
+                                self.network.server_ip().unwrap()
+                            )); // unwrap galore
                         }
                         ui.separator();
                     },
@@ -364,10 +361,8 @@ impl App {
 
                 self.egui_integration.end_frame(&mut self.window);
 
-                self.egui_integration.paint(
-                    command_buffer,
-                    self.renderer.image_index(),
-                )?;
+                self.egui_integration
+                    .paint(command_buffer, self.renderer.image_index())?;
 
                 self.renderer.end_frame()?;
             }

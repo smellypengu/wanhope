@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use crate::vulkan::{Device, RenderError};
+use crate::graphics::vulkan::{Device, RenderError};
 
 pub struct DescriptorSetLayoutBuilder {
     device: Rc<Device>,
