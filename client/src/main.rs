@@ -20,8 +20,5 @@ fn main() {
 
     let app = App::new(&event_loop).unwrap();
 
-    // for testing purposes
-    let world = common::world::World::new(10, 10);
-
     App::run(app, event_loop).unwrap();
 }

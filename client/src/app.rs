@@ -10,7 +10,7 @@ use crate::{
         vulkan::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
             egui::EGuiIntegration,
-            Buffer, Device, Model, RenderError, Renderer, MAX_FRAMES_IN_FLIGHT,
+            Buffer, Device, Model, RenderError, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
         },
         Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
     },
@@ -42,6 +42,8 @@ pub struct App {
     game_objects: HashMap<u8, GameObject>,
 
     network: Network,
+
+    world: common::world::World,
 }
 
 impl App {
@@ -121,7 +123,9 @@ impl App {
 
         let camera_controller = KeyboardMovementController::new(None, None);
 
-        let game_objects = Self::load_game_objects(device.clone())?;
+        let world = common::world::World::new(10, 10);
+
+        let game_objects = Self::load_game_objects(device.clone(), &world)?;
 
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
@@ -159,6 +163,8 @@ impl App {
             game_objects,
 
             network: Network::new(),
+
+            world,
         })
     }
 
@@ -277,6 +283,24 @@ impl App {
             )
             .build();
 
+        // if let Some(cursor_position) = self.window.cursor_position() {
+        //     if let Some(ray) = crate::graphics::Ray::from_screenspace(
+        //         cursor_position,
+        //         glam::vec2(
+        //             self.window.inner().inner_size().width as f32,
+        //             self.window.inner().inner_size().height as f32,
+        //         ),
+        //         &camera,
+        //     ) {
+        //         let plane = crate::graphics::Plane {
+        //             center: glam::Vec3::ZERO,
+        //             normal: glam::Vec3::Y,
+        //         };
+
+        //         log::info!("{:?}", plane.intersect(ray));
+        //     }
+        // }
+
         let extent = Renderer::get_window_extent(&self.window);
 
         if extent.width == 0 || extent.height == 0 {
@@ -342,19 +366,23 @@ impl App {
 
                 egui::SidePanel::left("my_side_panel").show(
                     &self.egui_integration.egui_ctx.clone(),
-                    |ui| {
+                    |ui: &mut egui::Ui| {
                         ui.heading("Wanhope");
                         ui.separator();
+
                         if !self.network.connected {
                             if ui.button("Connect").clicked() {
-                                self.network.connect().unwrap(); // TODO: fix unwrap?
+                                if self.network.connect().is_err() {
+                                    ui.label("Failed to connect");
+                                }
                             };
                         } else {
                             ui.label(format!(
                                 "Connected to {}",
                                 self.network.server_ip().unwrap()
-                            )); // unwrap galore
+                            ));
                         }
+
                         ui.separator();
                     },
                 );
@@ -384,7 +412,10 @@ impl App {
         Ok(())
     }
 
-    fn load_game_objects(device: Rc<Device>) -> anyhow::Result<HashMap<u8, GameObject>, AppError> {
+    fn load_game_objects(
+        device: Rc<Device>,
+        world: &common::world::World,
+    ) -> anyhow::Result<HashMap<u8, GameObject>, AppError> {
         let mut game_objects = HashMap::new();
 
         let floor_model = Model::from_file(
@@ -460,6 +491,46 @@ impl App {
 
             game_objects.insert(point_light.id, point_light);
         }
+
+        // let mut vertices: Vec<Vertex> = Vec::new();
+        // let mut indices: Vec<u32> = Vec::new();
+
+        // let div = 10;
+
+        // let triangle_side = (world.width / div) as f32;
+
+        // for x in 0..div + 1 {
+        //     for y in 0..div + 1 {
+        //         vertices.push(Vertex {
+        //             position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
+        //             color: glam::vec3(0.0, 0.0, 0.5),
+        //             normal: glam::vec3(0.0, 0.0, 0.0),
+        //             uv: glam::vec2(0.0, 0.0),
+        //         });
+        //     }
+        // }
+
+        // for x in 0..div {
+        //     for y in 0..div {
+        //         let index = x * (div + 1) + y;
+
+        //         // Top triangle in tile
+        //         indices.push(index as u32);
+        //         indices.push((index + (div + 1) + 1) as u32);
+        //         indices.push((index + (div + 1)) as u32);
+
+        //         // Bottom triangle in tile
+        //         indices.push(index as u32);
+        //         indices.push((index + 1) as u32);
+        //         indices.push((index + (div + 1) + 1) as u32);
+        //     }
+        // }
+
+        // let model = Model::new(device.clone(), &vertices, Some(&indices))?;
+
+        // let obj = GameObject::new(Some(model), None, None);
+
+        // game_objects.insert(obj.id, obj);
 
         Ok(game_objects)
     }

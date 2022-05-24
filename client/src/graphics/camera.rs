@@ -80,6 +80,7 @@ impl Camera {
         }
     }
 
+    #[inline]
     pub fn position(&self) -> glam::Vec3 {
         self.inverse_view_matrix.col(3).xyz()
     }

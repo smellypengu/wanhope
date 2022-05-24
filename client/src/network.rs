@@ -30,44 +30,28 @@ impl Network {
             self.socket = UdpSocket::bind(local_addr).ok();
 
             if let Some(socket) = &self.socket {
-                match socket.connect(remote_addr) {
-                    Ok(_) => {
-                        // register as client in server
+                socket.connect(remote_addr)?;
 
-                        match socket.send(&[common::ClientMessage::Join as u8]) {
-                            Ok(_) => {
-                                let mut response = vec![0u8; 2];
-                                match socket.recv(&mut response) {
-                                    Ok(len) => {
-                                        let join_result =
-                                            common::ServerMessage::try_from(response[0]).unwrap();
+                // register as client in server
+                socket.send(&[common::ClientMessage::Join as u8])?;
 
-                                        match join_result {
-                                            common::ServerMessage::JoinResult => {
-                                                if len > 1 as usize {
-                                                    println!("user id: {}", response[1]);
+                let mut response = vec![0u8; 2];
+                let len = socket.recv(&mut response)?;
 
-                                                    self.connected = true;
-                                                } else {
-                                                    log::info!("Server did not let us in");
-                                                }
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                    Err(_) => {
-                                        log::info!("Failed to recieve join response");
-                                    }
-                                }
-                            }
-                            Err(_) => {
-                                log::info!("Failed to send join request");
-                            }
+                let join_result =
+                    common::ServerMessage::try_from(response[0]).unwrap();
+
+                match join_result {
+                    common::ServerMessage::JoinResult => {
+                        if len > 1 as usize {
+                            println!("user id: {}", response[1]);
+
+                            self.connected = true;
+                        } else {
+                            log::info!("Server did not let us in");
                         }
                     }
-                    Err(_) => {
-                        log::info!("Connection refused");
-                    }
+                    _ => {}
                 }
             }
         }
