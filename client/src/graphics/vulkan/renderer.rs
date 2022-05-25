@@ -206,7 +206,7 @@ impl Renderer {
         let new_swapchain = Swapchain::new(
             self.device.clone(),
             extent,
-            self.swapchain.swapchain_khr.take(),
+            Some(self.swapchain.swapchain_khr),
         )?;
 
         self.swapchain.compare_swap_formats(&new_swapchain)?;

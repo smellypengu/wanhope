@@ -366,7 +366,7 @@ impl App {
 
                 egui::SidePanel::left("my_side_panel").show(
                     &self.egui_integration.egui_ctx.clone(),
-                    |ui: &mut egui::Ui| {
+                    |ui| {
                         ui.heading("Wanhope");
                         ui.separator();
 

@@ -7,7 +7,7 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 pub struct Swapchain {
     device: Rc<Device>,
     swapchain: ash::extensions::khr::Swapchain,
-    pub swapchain_khr: Option<ash::vk::SwapchainKHR>,
+    pub swapchain_khr: ash::vk::SwapchainKHR,
     pub swapchain_image_format: ash::vk::Format,
     swapchain_depth_format: ash::vk::Format,
     pub swapchain_extent: ash::vk::Extent2D,
@@ -70,7 +70,7 @@ impl Swapchain {
         Ok(Self {
             device,
             swapchain,
-            swapchain_khr: Some(swapchain_khr),
+            swapchain_khr,
             swapchain_image_format,
             swapchain_depth_format,
             swapchain_extent,
@@ -123,7 +123,7 @@ impl Swapchain {
         )?;
 
         Ok(self.swapchain.acquire_next_image(
-            self.swapchain_khr.unwrap(),
+            self.swapchain_khr,
             u64::MAX,
             self.image_available_semaphores[self.current_frame],
             ash::vk::Fence::null(),
@@ -172,7 +172,7 @@ impl Swapchain {
             )?;
         };
 
-        let swapchains = [self.swapchain_khr.unwrap()];
+        let swapchains = [self.swapchain_khr];
 
         let image_index = image_index as u32;
 
@@ -556,9 +556,11 @@ impl Drop for Swapchain {
         log::debug!("Dropping vulkan swapchain");
 
         unsafe {
-            if let Some(swapchain_khr) = self.swapchain_khr {
-                self.swapchain.destroy_swapchain(swapchain_khr, None);
-            }
+            // if let Some(swapchain_khr) = self.swapchain_khr {
+            //     self.swapchain.destroy_swapchain(swapchain_khr, None);
+            // }
+
+            // self.swapchain.destroy_swapchain(self.swapchain_khr, None); TODO: figure out why this line causes the rest of the app not to be destroyed properly
 
             self.depth_images
                 .iter()
