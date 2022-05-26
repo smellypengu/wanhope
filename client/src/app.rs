@@ -202,11 +202,6 @@ impl App {
                             }
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
-                            let height = app.window.inner().inner_size().height;
-
-                            // move origin to bottom left
-                            let y = height as f64 - position.y;
-
                             let physical_position = glam::DVec2::new(position.x, position.y);
                             app.window.physical_cursor_position = Some(physical_position);
                         }
