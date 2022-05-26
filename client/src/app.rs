@@ -207,7 +207,7 @@ impl App {
                             // move origin to bottom left
                             let y = height as f64 - position.y;
 
-                            let physical_position = glam::DVec2::new(position.x, y);
+                            let physical_position = glam::DVec2::new(position.x, position.y);
                             app.window.physical_cursor_position = Some(physical_position);
                         }
                         winit::event::WindowEvent::CursorLeft { .. } => {
@@ -287,17 +287,17 @@ impl App {
                     };
 
                     if let Some(distance) = plane.intersect(&ray) {
-                        let point = ray.origin + (ray.dir * distance);
+                        let point = ray.origin + ray.dir * distance;
 
                         let position =
-                            (glam::vec3(point.x / 10.0, 0.0, -(point.z / 10.0)) * 10.0).round();
+                            (glam::vec3((point.x + 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0) * 10.0).round();
                         log::info!("{}", position);
 
                         self.game_objects
                             .get_mut(&self.select_id)
                             .unwrap()
                             .transform
-                            .translation = position;
+                            .translation = position - glam::vec3(0.5, 0.0, 0.5);
                     }
                 }
             }
