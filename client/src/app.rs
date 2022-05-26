@@ -36,10 +36,13 @@ pub struct App {
     simple_render_system: SimpleRenderSystem,
     point_light_system: PointLightSystem,
 
-    viewer_object: GameObject,
+    camera: Option<Camera>,
     camera_controller: KeyboardMovementController,
+    viewer_object: GameObject,
 
     game_objects: HashMap<u8, GameObject>,
+
+    select_id: u8,
 
     network: Network,
 
@@ -118,14 +121,14 @@ impl App {
             global_descriptor_sets.push(set);
         }
 
+        let camera_controller = KeyboardMovementController::new(None, None);
+
         let mut viewer_object = GameObject::new(None, None, None);
         viewer_object.transform.translation.z = 2.5;
 
-        let camera_controller = KeyboardMovementController::new(None, None);
-
         let world = common::world::World::new(10, 10);
 
-        let game_objects = Self::load_game_objects(device.clone(), &world)?;
+        let (game_objects, select_id) = Self::load_game_objects(device.clone(), &world)?;
 
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
@@ -157,10 +160,13 @@ impl App {
             simple_render_system,
             point_light_system,
 
-            viewer_object,
+            camera: None,
             camera_controller,
+            viewer_object,
 
             game_objects,
+
+            select_id,
 
             network: Network::new(),
 
@@ -173,6 +179,7 @@ impl App {
         event_loop: winit::event_loop::EventLoop<()>,
     ) -> anyhow::Result<(), AppError> {
         let mut current_time = Instant::now();
+        let mut frame_time = 0.0;
 
         let mut input = Input::new();
 
@@ -206,26 +213,44 @@ impl App {
                         winit::event::WindowEvent::CursorLeft { .. } => {
                             app.window.physical_cursor_position = None;
                         }
+                        winit::event::WindowEvent::MouseInput { state, button, .. } => {
+                            app.mouse_input(state, button);
+                        }
                         _ => {}
                     }
                 }
                 winit::event::Event::MainEventsCleared => {
-                    app.update().unwrap(); // TODO: fix unwrap?
+                    frame_time = current_time.elapsed().as_secs_f32();
+                    current_time = Instant::now();
+
+                    app.update(&input, frame_time).unwrap(); // TODO: fix unwrap?
 
                     app.window.request_redraw();
                 }
                 winit::event::Event::RedrawRequested(_) => {
-                    let frame_time = current_time.elapsed().as_secs_f32();
-                    current_time = Instant::now();
-
-                    app.draw(&input, frame_time).unwrap(); // TODO: fix unwrap?
+                    app.draw(frame_time).unwrap(); // TODO: fix unwrap?
                 }
                 _ => {}
             }
         });
     }
 
-    pub fn update(&mut self) -> anyhow::Result<(), AppError> {
+    pub fn update(&mut self, input: &Input, frame_time: f32) -> anyhow::Result<(), AppError> {
+        self.camera_controller
+            .move_in_plane_xz(input, frame_time, &mut self.viewer_object);
+
+        let aspect = self.renderer.swapchain.extent_aspect_ratio();
+
+        self.camera = Some(
+            Camera::new()
+                .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 100.0)
+                .set_view_xyz(
+                    self.viewer_object.transform.translation,
+                    self.viewer_object.transform.rotation,
+                )
+                .build(),
+        );
+
         if let Some(server_message) = self.network.update()? {
             match server_message {
                 common::ServerMessage::ClientJoining => {
@@ -240,67 +265,46 @@ impl App {
         Ok(())
     }
 
-    pub fn spawn_game_object(&mut self) -> anyhow::Result<(), AppError> {
-        // shouldn't be loading new model each time, temporary
-        let flat_vase_model = Model::from_file(
-            self.device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode
-        )?;
+    pub fn mouse_input(
+        &mut self,
+        state: winit::event::ElementState,
+        button: winit::event::MouseButton,
+    ) {
+        if state == winit::event::ElementState::Pressed && button == winit::event::MouseButton::Left
+        {
+            if let Some(cursor_position) = self.window.cursor_position() {
+                if let Some(ray) = crate::graphics::Ray::from_screenspace(
+                    cursor_position,
+                    glam::vec2(
+                        self.window.inner().inner_size().width as f32,
+                        self.window.inner().inner_size().height as f32,
+                    ),
+                    self.camera.as_ref().unwrap(),
+                ) {
+                    let plane = crate::graphics::Plane {
+                        center: glam::Vec3::ZERO,
+                        normal: glam::Vec3::Y,
+                    };
 
-        let mut rng = rand::thread_rng();
+                    if let Some(distance) = plane.intersect(&ray) {
+                        let point = ray.origin + (ray.dir * distance);
 
-        // random is temporary
-        let flat_vase = GameObject::new(
-            Some(flat_vase_model),
-            None,
-            Some(TransformComponent {
-                translation: glam::vec3(
-                    rng.gen_range(-10..10) as f32,
-                    0.0,
-                    rng.gen_range(-10..10) as f32,
-                ),
-                scale: glam::Vec3::ONE,
-                rotation: glam::Vec3::ZERO,
-            }),
-        );
+                        let position =
+                            (glam::vec3(point.x / 10.0, 0.0, -(point.z / 10.0)) * 10.0).round();
+                        log::info!("{}", position);
 
-        self.game_objects.insert(flat_vase.id, flat_vase);
-
-        Ok(())
+                        self.game_objects
+                            .get_mut(&self.select_id)
+                            .unwrap()
+                            .transform
+                            .translation = position;
+                    }
+                }
+            }
+        }
     }
 
-    pub fn draw(&mut self, input: &Input, frame_time: f32) -> anyhow::Result<(), AppError> {
-        self.camera_controller
-            .move_in_plane_xz(input, frame_time, &mut self.viewer_object);
-
-        let aspect = self.renderer.swapchain.extent_aspect_ratio();
-
-        let camera = Camera::new()
-            .set_perspective_projection(50_f32.to_radians(), aspect, 0.1, 100.0)
-            .set_view_xyz(
-                self.viewer_object.transform.translation,
-                self.viewer_object.transform.rotation,
-            )
-            .build();
-
-        // if let Some(cursor_position) = self.window.cursor_position() {
-        //     if let Some(ray) = crate::graphics::Ray::from_screenspace(
-        //         cursor_position,
-        //         glam::vec2(
-        //             self.window.inner().inner_size().width as f32,
-        //             self.window.inner().inner_size().height as f32,
-        //         ),
-        //         &camera,
-        //     ) {
-        //         let plane = crate::graphics::Plane {
-        //             center: glam::Vec3::ZERO,
-        //             normal: glam::Vec3::Y,
-        //         };
-
-        //         log::info!("{:?}", plane.intersect(ray));
-        //     }
-        // }
-
+    pub fn draw(&mut self, frame_time: f32) -> anyhow::Result<(), AppError> {
         let extent = Renderer::get_window_extent(&self.window);
 
         if extent.width == 0 || extent.height == 0 {
@@ -315,7 +319,7 @@ impl App {
                     frame_index,
                     frame_time,
                     command_buffer,
-                    camera,
+                    camera: self.camera.as_ref().unwrap(),
                     global_descriptor_set: self.global_descriptor_sets[frame_index],
                     game_objects: &mut self.game_objects,
                 };
@@ -412,10 +416,39 @@ impl App {
         Ok(())
     }
 
+    pub fn spawn_game_object(&mut self) -> anyhow::Result<(), AppError> {
+        // shouldn't be loading new model each time, temporary
+        let flat_vase_model = Model::from_file(
+            self.device.clone(),
+            "client/models/flat_vase.obj", // needs fixing for release mode
+        )?;
+
+        let mut rng = rand::thread_rng();
+
+        // random is temporary
+        let flat_vase = GameObject::new(
+            Some(flat_vase_model),
+            None,
+            Some(TransformComponent {
+                translation: glam::vec3(
+                    rng.gen_range(-10..10) as f32,
+                    0.0,
+                    rng.gen_range(-10..10) as f32,
+                ),
+                scale: glam::Vec3::ONE,
+                rotation: glam::Vec3::ZERO,
+            }),
+        );
+
+        self.game_objects.insert(flat_vase.id, flat_vase);
+
+        Ok(())
+    }
+
     fn load_game_objects(
         device: Rc<Device>,
         world: &common::world::World,
-    ) -> anyhow::Result<HashMap<u8, GameObject>, AppError> {
+    ) -> anyhow::Result<(HashMap<u8, GameObject>, u8), AppError> {
         let mut game_objects = HashMap::new();
 
         let floor_model = Model::from_file(
@@ -492,47 +525,66 @@ impl App {
             game_objects.insert(point_light.id, point_light);
         }
 
-        // let mut vertices: Vec<Vertex> = Vec::new();
-        // let mut indices: Vec<u32> = Vec::new();
+        let mut vertices: Vec<Vertex> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
 
-        // let div = 10;
+        let div = 10;
 
-        // let triangle_side = (world.width / div) as f32;
+        let triangle_side = (world.width / div) as f32;
 
-        // for x in 0..div + 1 {
-        //     for y in 0..div + 1 {
-        //         vertices.push(Vertex {
-        //             position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
-        //             color: glam::vec3(0.0, 0.0, 0.5),
-        //             normal: glam::vec3(0.0, 0.0, 0.0),
-        //             uv: glam::vec2(0.0, 0.0),
-        //         });
-        //     }
-        // }
+        for x in 0..div + 1 {
+            for y in 0..div + 1 {
+                vertices.push(Vertex {
+                    position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
+                    color: glam::vec3(0.0, 0.0, 0.5),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(0.0, 0.0),
+                });
+            }
+        }
 
-        // for x in 0..div {
-        //     for y in 0..div {
-        //         let index = x * (div + 1) + y;
+        for x in 0..div {
+            for y in 0..div {
+                let index = x * (div + 1) + y;
 
-        //         // Top triangle in tile
-        //         indices.push(index as u32);
-        //         indices.push((index + (div + 1) + 1) as u32);
-        //         indices.push((index + (div + 1)) as u32);
+                // Top triangle in tile
+                indices.push(index as u32);
+                indices.push((index + (div + 1) + 1) as u32);
+                indices.push((index + (div + 1)) as u32);
 
-        //         // Bottom triangle in tile
-        //         indices.push(index as u32);
-        //         indices.push((index + 1) as u32);
-        //         indices.push((index + (div + 1) + 1) as u32);
-        //     }
-        // }
+                // Bottom triangle in tile
+                indices.push(index as u32);
+                indices.push((index + 1) as u32);
+                indices.push((index + (div + 1) + 1) as u32);
+            }
+        }
 
-        // let model = Model::new(device.clone(), &vertices, Some(&indices))?;
+        let model = Model::new(device.clone(), &vertices, Some(&indices))?;
 
-        // let obj = GameObject::new(Some(model), None, None);
+        let obj = GameObject::new(Some(model), None, None);
 
-        // game_objects.insert(obj.id, obj);
+        game_objects.insert(obj.id, obj);
 
-        Ok(game_objects)
+        let select_model = Model::from_file(
+            device.clone(),
+            "client/models/quad.obj", // needs fixing for release mode
+        )?;
+
+        let select = GameObject::new(
+            Some(select_model),
+            None,
+            Some(TransformComponent {
+                translation: glam::Vec3::ZERO,
+                scale: glam::vec3(0.5, 1.0, 0.5),
+                rotation: glam::Vec3::ZERO,
+            }),
+        );
+
+        let select_id = select.id;
+
+        game_objects.insert(select_id, select);
+
+        Ok((game_objects, select_id))
     }
 }
 

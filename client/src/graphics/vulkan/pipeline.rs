@@ -41,7 +41,7 @@ impl PipelineBuilder {
         let rasterization_info = ash::vk::PipelineRasterizationStateCreateInfo {
             depth_clamp_enable: ash::vk::FALSE,
             rasterizer_discard_enable: ash::vk::FALSE,
-            polygon_mode: ash::vk::PolygonMode::FILL,
+            polygon_mode: ash::vk::PolygonMode::LINE,
             cull_mode: ash::vk::CullModeFlags::NONE,
             front_face: ash::vk::FrontFace::CLOCKWISE,
             depth_bias_enable: ash::vk::FALSE,

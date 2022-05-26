@@ -6,7 +6,7 @@ pub struct Plane {
 }
 
 impl Plane {
-    pub fn intersect(&self, ray: Ray) -> Option<f32> {
+    pub fn intersect(&self, ray: &Ray) -> Option<f32> {
         let denominator = self.normal.dot(ray.dir);
 
         if denominator.abs() > 0.0001 {

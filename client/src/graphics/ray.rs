@@ -26,7 +26,7 @@ impl Ray {
         // 3d world coordinates
         let ray_world = (camera.inverse_view_matrix * ray_eye).xyz();
 
-        let origin = (camera.inverse_view_matrix * glam::Vec4::W).truncate();
+        let origin = (camera.inverse_view_matrix * glam::Vec4::W).xyz();
 
         Some(Self {
             origin,
