@@ -38,8 +38,7 @@ impl Network {
                 let mut response = vec![0u8; 2];
                 let len = socket.recv(&mut response)?;
 
-                let join_result =
-                    common::ServerMessage::try_from(response[0]).unwrap();
+                let join_result = common::ServerMessage::try_from(response[0]).unwrap();
 
                 match join_result {
                     common::ServerMessage::JoinResult => {
@@ -93,6 +92,22 @@ impl Network {
         }
 
         Ok(None)
+    }
+
+    pub fn send_client_world_click(&self, position: glam::Vec2) -> anyhow::Result<(), AppError> {
+        match &self.socket {
+            Some(socket) => {
+                let mut send = vec![common::ClientMessage::WorldClick as u8];
+                send.append(&mut common::serialize(&position).unwrap());
+
+                socket.send(&send)?;
+
+                // get result
+            }
+            None => {}
+        }
+
+        Ok(())
     }
 
     pub fn server_ip(&self) -> Option<SocketAddr> {

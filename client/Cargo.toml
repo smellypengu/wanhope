@@ -10,7 +10,7 @@ edition = "2021"
 [dependencies]
 common = { path = "../common" }
 
-glam = "0.20.5"
+glam = { version = "0.20.5", features = ["serde"] }
 
 tobj = "3.2.2"
 

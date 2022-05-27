@@ -1,6 +1,6 @@
 use std::{collections::HashMap, f32::consts::PI, ffi::CString, io, rc::Rc, time::Instant};
 
-use glam::Vec4Swizzles;
+use glam::{Vec4Swizzles, Vec3Swizzles};
 use rand::Rng;
 
 use crate::{
@@ -209,7 +209,7 @@ impl App {
                             app.window.physical_cursor_position = None;
                         }
                         winit::event::WindowEvent::MouseInput { state, button, .. } => {
-                            app.mouse_input(state, button);
+                            app.mouse_input(state, button).unwrap(); // fix unwrap?
                         }
                         _ => {}
                     }
@@ -264,7 +264,7 @@ impl App {
         &mut self,
         state: winit::event::ElementState,
         button: winit::event::MouseButton,
-    ) {
+    ) -> anyhow::Result<(), AppError> {
         if state == winit::event::ElementState::Pressed && button == winit::event::MouseButton::Left
         {
             if let Some(cursor_position) = self.window.cursor_position() {
@@ -285,18 +285,31 @@ impl App {
                         let point = ray.origin + ray.dir * distance;
 
                         let position =
-                            (glam::vec3((point.x + 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0) * 10.0).round();
+                            (glam::vec3((point.x - 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0)
+                                * 10.0)
+                                .round();
+
                         log::info!("{}", position);
 
-                        self.game_objects
-                            .get_mut(&self.select_id)
-                            .unwrap()
-                            .transform
-                            .translation = position - glam::vec3(0.5, 0.0, 0.5);
+                        if position.x >= 0.0
+                            && position.z < 1.0
+                            && position.x < self.world.width as f32
+                            && position.z > -(self.world.height as f32)
+                        {
+                            self.network.send_client_world_click(position.xz().abs())?;
+
+                            self.game_objects
+                                .get_mut(&self.select_id)
+                                .unwrap()
+                                .transform
+                                .translation = position + glam::vec3(0.5, 0.0, -0.5);
+                        }
                     }
                 }
             }
         }
+
+        Ok(())
     }
 
     pub fn draw(&mut self, frame_time: f32) -> anyhow::Result<(), AppError> {
@@ -569,7 +582,7 @@ impl App {
             Some(select_model),
             None,
             Some(TransformComponent {
-                translation: glam::Vec3::ZERO,
+                translation: glam::vec3(0.5, 0.0, -0.5),
                 scale: glam::vec3(0.5, 1.0, 0.5),
                 rotation: glam::Vec3::ZERO,
             }),

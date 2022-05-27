@@ -81,17 +81,13 @@ async fn main() -> crate::Result<()> {
 
                 clients[client_index as usize] = Client { addr: None }
             }
+            common::ClientMessage::WorldClick => {
+                let deserialized_position: glam::Vec2 = common::deserialize(buf.split_first().unwrap().1)?;
+
+                println!("{}", deserialized_position);
+
+                // send result
+            }
         }
-
-        // let mut msg: common::TestStruct = common::deserialize(&buf[..len]).unwrap();
-        // println!("From the sender: {:?}", msg);
-
-        // msg.abc = "changed".to_string();
-
-        // let serialized = common::serialize(&msg).unwrap();
-
-        // tx.send((serialized, addr)).await.unwrap();
-
-        println!("{:?}", clients);
     }
 }

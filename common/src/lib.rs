@@ -1,10 +1,11 @@
-// use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 pub mod world;
 
 pub enum ClientMessage {
     Join,
     Leave,
+    WorldClick,
 }
 
 impl TryFrom<u8> for ClientMessage {
@@ -14,6 +15,7 @@ impl TryFrom<u8> for ClientMessage {
         match val {
             0 => Ok(ClientMessage::Join),
             1 => Ok(ClientMessage::Leave),
+            2 => Ok(ClientMessage::WorldClick),
             _ => Err(()),
         }
     }
@@ -36,22 +38,16 @@ impl TryFrom<u8> for ServerMessage {
     }
 }
 
-// #[derive(Serialize, Deserialize, PartialEq, Debug)]
-// pub struct TestStruct {
-//     pub x: u8,
-//     pub abc: String,
-// }
+pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
+where
+    T: ?Sized + Serialize,
+{
+    bincode::serialize(&value)
+}
 
-// pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
-// where
-//     T: ?Sized + Serialize,
-// {
-//     bincode::serialize(&value)
-// }
-
-// pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, bincode::Error>
-// where
-//     T: Deserialize<'a>,
-// {
-//     bincode::deserialize(&bytes)
-// }
+pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, bincode::Error>
+where
+    T: Deserialize<'a>,
+{
+    bincode::deserialize(&bytes)
+}
