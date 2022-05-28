@@ -5,6 +5,8 @@ pub mod world;
 pub enum ClientMessage {
     Join,
     Leave,
+    KeepAlive,
+    WorldRequest,
     WorldClick,
 }
 
@@ -15,7 +17,9 @@ impl TryFrom<u8> for ClientMessage {
         match val {
             0 => Ok(ClientMessage::Join),
             1 => Ok(ClientMessage::Leave),
-            2 => Ok(ClientMessage::WorldClick),
+            2 => Ok(ClientMessage::KeepAlive),
+            3 => Ok(ClientMessage::WorldRequest),
+            4 => Ok(ClientMessage::WorldClick),
             _ => Err(()),
         }
     }
@@ -24,6 +28,7 @@ impl TryFrom<u8> for ClientMessage {
 pub enum ServerMessage {
     JoinResult,
     ClientJoining, // sent to all other clients when a new client joins
+    GameState,
 }
 
 impl TryFrom<u8> for ServerMessage {
@@ -33,6 +38,7 @@ impl TryFrom<u8> for ServerMessage {
         match val {
             0 => Ok(ServerMessage::JoinResult),
             1 => Ok(ServerMessage::ClientJoining),
+            2 => Ok(ServerMessage::GameState),
             _ => Err(()),
         }
     }

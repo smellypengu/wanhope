@@ -1,6 +1,6 @@
 use std::{collections::HashMap, f32::consts::PI, ffi::CString, io, rc::Rc, time::Instant};
 
-use glam::{Vec4Swizzles, Vec3Swizzles};
+use glam::{Vec3Swizzles, Vec4Swizzles};
 use rand::Rng;
 
 use crate::{
@@ -246,12 +246,15 @@ impl App {
                 .build(),
         );
 
-        if let Some(server_message) = self.network.update()? {
+        if let (Some(server_message), payload) = self.network.update()? {
             match server_message {
                 common::ServerMessage::ClientJoining => {
                     println!("a new client joined the server!");
 
                     self.spawn_game_object()?;
+                }
+                common::ServerMessage::GameState => {
+                    self.world = common::deserialize(&payload).unwrap();
                 }
                 _ => {}
             }
@@ -382,7 +385,7 @@ impl App {
                         ui.heading("Wanhope");
                         ui.separator();
 
-                        if !self.network.connected {
+                        if self.network.client_id.is_none() {
                             if ui.button("Connect").clicked() {
                                 if self.network.connect().is_err() {
                                     ui.label("Failed to connect");

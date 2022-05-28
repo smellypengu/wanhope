@@ -4,19 +4,22 @@ use crate::app::AppError;
 
 pub struct Network {
     socket: Option<UdpSocket>,
-    pub connected: bool,
+    pub client_id: Option<u8>,
+
+    keep_alive_timer: i16,
 }
 
 impl Network {
     pub fn new() -> Self {
         Self {
             socket: None,
-            connected: false,
+            client_id: None,
+            keep_alive_timer: 0,
         }
     }
 
     pub fn connect(&mut self) -> anyhow::Result<(), AppError> {
-        if !self.connected {
+        if self.client_id.is_none() {
             let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 
             let local_addr: SocketAddr = if remote_addr.is_ipv4() {
@@ -45,7 +48,7 @@ impl Network {
                         if len > 1 as usize {
                             println!("user id: {}", response[1]);
 
-                            self.connected = true;
+                            self.client_id = Some(response[1]);
                         } else {
                             log::info!("Server did not let us in");
                         }
@@ -58,47 +61,48 @@ impl Network {
         Ok(())
     }
 
-    pub fn update(&self) -> anyhow::Result<Option<common::ServerMessage>, AppError> {
+    pub fn update(&mut self) -> anyhow::Result<(Option<common::ServerMessage>, Vec<u8>), AppError> {
         match &self.socket {
             Some(socket) => {
-                let mut data = vec![0u8; 1_024];
-
                 // set to nonblocking so recv() call doesn't freeze app, probably temporary
                 socket.set_nonblocking(true)?;
 
+                // TODO: figure out a better way to do this timer
+                if self.keep_alive_timer == 500 {
+                    socket.send(&[common::ClientMessage::KeepAlive as u8])?;
+                    self.keep_alive_timer = 0;
+                }
+
+                self.keep_alive_timer += 1;
+
+                let mut data = vec![0u8; 1_024];
+
                 match socket.recv(&mut data) {
-                    Ok(_len) => {
-                        return Ok(common::ServerMessage::try_from(data[0]).ok());
+                    Ok(len) => {
+                        let x = data[..len].to_vec();
+                        let message = common::ServerMessage::try_from(x[0]).ok();
+                        let payload = x.split_at(1).1.to_vec();
+
+                        return Ok((message, payload));
                     }
                     Err(_) => {}
                 }
-
-                // let test_struct = common::TestStruct { x: 100, abc: "lol".to_string() };
-                // let msg = common::serialize(&test_struct).unwrap();
-
-                // socket.send(&msg).unwrap();
-                // let mut data = vec![0u8; 1_000];
-                // let len = socket.recv(&mut data).unwrap();
-
-                // let deserialized: common::TestStruct = common::deserialize(&data[..len]).unwrap();
-
-                // println!(
-                //     "Received {} bytes:\n{:?}",
-                //     len,
-                //     deserialized,
-                // );
             }
             None => {}
         }
 
-        Ok(None)
+        Ok((None, vec![]))
     }
 
     pub fn send_client_world_click(&self, position: glam::Vec2) -> anyhow::Result<(), AppError> {
         match &self.socket {
             Some(socket) => {
-                let mut send = vec![common::ClientMessage::WorldClick as u8];
-                send.append(&mut common::serialize(&position).unwrap());
+                let mut send = vec![
+                    common::ClientMessage::WorldClick as u8,
+                    self.client_id.unwrap(),
+                ];
+
+                send.extend(&mut common::serialize(&position).unwrap().iter().copied());
 
                 socket.send(&send)?;
 

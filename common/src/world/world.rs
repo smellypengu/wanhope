@@ -1,5 +1,8 @@
+use serde::{Deserialize, Serialize};
+
 use super::{Tile, TileType};
 
+#[derive(Serialize, Deserialize)]
 pub struct World {
     pub tiles: ndarray::Array2<Tile>,
     pub width: usize,

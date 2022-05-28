@@ -1,6 +1,10 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
-use tokio::{net::UdpSocket, sync::mpsc};
+use tokio::{
+    net::UdpSocket,
+    sync::{mpsc, Mutex},
+    time,
+};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -9,13 +13,27 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, Clone, Copy)]
 struct Client {
     addr: Option<SocketAddr>,
+    last_heard: f32,
 }
 
+const TICKS_PER_SECOND: usize = 60;
+const SECONDS_PER_TICK: f32 = 1.0 / TICKS_PER_SECOND as f32;
 const MAX_CLIENTS: usize = 32;
+const CLIENT_TIMEOUT: f32 = 5.0;
 
 #[tokio::main]
 async fn main() -> crate::Result<()> {
-    let mut clients = [Client { addr: None }; MAX_CLIENTS];
+    let world = Arc::new(common::world::World::new(10, 10));
+    let world2 = world.clone();
+
+    let clients = Arc::new(Mutex::new(
+        [Client {
+            addr: None,
+            last_heard: 0.0,
+        }; MAX_CLIENTS],
+    ));
+
+    let c = clients.clone();
 
     let addr = env::args()
         .nth(1)
@@ -26,68 +44,133 @@ async fn main() -> crate::Result<()> {
 
     let r = Arc::new(socket);
     let s = r.clone();
+    let s2 = s.clone();
+
     let (tx, mut rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(1_000);
 
     tokio::spawn(async move {
         while let Some((bytes, addr)) = rx.recv().await {
-            let len = s.send_to(&bytes, &addr).await.unwrap();
-            println!("{:?} bytes sent", len);
+            send(&s, addr, bytes).await;
         }
     });
 
-    let mut buf = [0; 1024];
-    loop {
-        let (len, addr) = r.recv_from(&mut buf).await?;
-        println!("{:?} bytes received from {:?}", len, addr);
+    tokio::spawn(async move {
+        loop {
+            let mut buf = [0; 1024];
 
-        match common::ClientMessage::try_from(buf[0]).unwrap() {
-            common::ClientMessage::Join => {
-                let mut slot = -1;
+            let (len, addr) = r.recv_from(&mut buf).await.unwrap();
+            println!("{} bytes received from {}", len, addr);
 
-                for i in 0..MAX_CLIENTS {
-                    if clients[i].addr.is_none() {
-                        slot = i as i8;
-                        break;
-                    }
-                }
+            match common::ClientMessage::try_from(buf[0]).unwrap() {
+                common::ClientMessage::Join => {
+                    let mut slot = -1;
 
-                let mut response = Vec::new();
-                response.insert(0, common::ServerMessage::JoinResult as u8);
-
-                if slot != -1 {
-                    println!("client will be assigned to slot: {}", slot);
-
-                    response.insert(1, slot as u8);
-                    tx.send((response, addr)).await?;
-
-                    clients[slot as usize] = Client { addr: Some(addr) };
-
-                    // inform all other clients that a new client joined
                     for i in 0..MAX_CLIENTS {
-                        if i != slot as usize {
-                            if let Some(addr) = clients[i].addr {
-                                tx.send((
-                                    [common::ServerMessage::ClientJoining as u8].to_vec(),
-                                    addr,
-                                ))
-                                .await?;
+                        if c.lock().await[i].addr.is_none() {
+                            slot = i as i8;
+                            break;
+                        }
+                    }
+
+                    let mut response = Vec::new();
+                    response.insert(0, common::ServerMessage::JoinResult as u8);
+
+                    if slot != -1 {
+                        println!("client will be assigned to slot: {}", slot);
+
+                        response.insert(1, slot as u8);
+                        tx.send((response, addr)).await.unwrap();
+
+                        c.lock().await[slot as usize] = Client {
+                            addr: Some(addr),
+                            last_heard: 0.0,
+                        };
+
+                        // inform all other clients that a new client joined
+                        for i in 0..MAX_CLIENTS {
+                            if i != slot as usize {
+                                if let Some(addr) = c.lock().await[i].addr {
+                                    tx.send((
+                                        [common::ServerMessage::ClientJoining as u8].to_vec(),
+                                        addr,
+                                    ))
+                                    .await
+                                    .unwrap();
+                                }
                             }
                         }
                     }
                 }
+                common::ClientMessage::Leave => {
+                    let client_id = buf[1];
+
+                    c.lock().await[client_id as usize] = Client {
+                        addr: None,
+                        last_heard: 0.0,
+                    }
+                }
+                common::ClientMessage::KeepAlive => {
+                    let client_id = buf[1];
+
+                    c.lock().await[client_id as usize].last_heard = 0.0;
+                }
+                common::ClientMessage::WorldRequest => {
+                    tx.send((common::serialize(world.as_ref()).unwrap(), addr))
+                        .await
+                        .unwrap();
+                }
+                common::ClientMessage::WorldClick => {
+                    let split = buf.split_at(2);
+
+                    let client_id = split.0[1];
+
+                    let deserialized_position: glam::Vec2 = common::deserialize(split.1).unwrap();
+
+                    println!("{}: {}", client_id, deserialized_position);
+
+                    // send result
+                }
             }
-            common::ClientMessage::Leave => {
-                let client_index = buf[1];
+        }
+    });
 
-                clients[client_index as usize] = Client { addr: None }
+    let c = clients.clone();
+
+    let mut interval = time::interval(time::Duration::from_secs_f32(SECONDS_PER_TICK));
+
+    loop {
+        interval.tick().await;
+
+        for (i, client) in c.lock().await.iter_mut().enumerate() {
+            if client.addr.is_some() {
+                client.last_heard += SECONDS_PER_TICK;
+
+                if client.last_heard > CLIENT_TIMEOUT {
+                    println!("client {} timed out", i);
+
+                    c.lock().await[i] = Client {
+                        addr: None,
+                        last_heard: 0.0,
+                    }
+                }
             }
-            common::ClientMessage::WorldClick => {
-                let deserialized_position: glam::Vec2 = common::deserialize(buf.split_first().unwrap().1)?;
+        }
 
-                println!("{}", deserialized_position);
+        let serialized_world = common::serialize(world2.as_ref()).unwrap();
 
-                // send result
+        // probably not best practise to send the entire world each tick?
+        for client in c.lock().await.iter() {
+            if let Some(addr) = client.addr {
+                let mut response = vec![common::ServerMessage::GameState as u8];
+                response.extend(serialized_world.iter().copied());
+
+                send(&s2, addr, response).await;
             }
         }
     }
+}
+
+async fn send(socket: &UdpSocket, addr: SocketAddr, bytes: Vec<u8>) {
+    let len = socket.send_to(&bytes, &addr).await.unwrap();
+    println!("{} bytes sent", len);
 }
