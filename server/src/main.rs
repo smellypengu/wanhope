@@ -23,7 +23,7 @@ const CLIENT_TIMEOUT: f32 = 5.0;
 
 #[tokio::main]
 async fn main() -> crate::Result<()> {
-    let world = Arc::new(common::world::World::new(10, 10));
+    let world = Arc::new(Mutex::new(common::world::World::new(10, 10)));
     let world2 = world.clone();
 
     let clients = Arc::new(Mutex::new(
@@ -50,7 +50,7 @@ async fn main() -> crate::Result<()> {
 
     tokio::spawn(async move {
         while let Some((bytes, addr)) = rx.recv().await {
-            send(&s, addr, bytes).await;
+            send(&s, addr, bytes).await.unwrap();
         }
     });
 
@@ -115,7 +115,7 @@ async fn main() -> crate::Result<()> {
                     c.lock().await[client_id as usize].last_heard = 0.0;
                 }
                 common::ClientMessage::WorldRequest => {
-                    tx.send((common::serialize(world.as_ref()).unwrap(), addr))
+                    tx.send((common::serialize(&*world.lock().await).unwrap(), addr))
                         .await
                         .unwrap();
                 }
@@ -126,29 +126,38 @@ async fn main() -> crate::Result<()> {
 
                     let deserialized_position: glam::Vec2 = common::deserialize(split.1).unwrap();
 
-                    println!("{}: {}", client_id, deserialized_position);
+                    world
+                        .lock()
+                        .await
+                        .tiles
+                        .get_mut((
+                            deserialized_position.x as usize,
+                            deserialized_position.y as usize,
+                        ))
+                        .unwrap()
+                        .ty = common::world::TileType::Floor;
 
-                    // send result
+                    // send a result?
                 }
             }
         }
     });
 
-    let c = clients.clone();
+    let clients2 = clients.clone();
 
     let mut interval = time::interval(time::Duration::from_secs_f32(SECONDS_PER_TICK));
 
     loop {
         interval.tick().await;
 
-        for (i, client) in c.lock().await.iter_mut().enumerate() {
+        for (i, client) in clients2.lock().await.iter_mut().enumerate() {
             if client.addr.is_some() {
                 client.last_heard += SECONDS_PER_TICK;
 
                 if client.last_heard > CLIENT_TIMEOUT {
                     println!("client {} timed out", i);
 
-                    c.lock().await[i] = Client {
+                    clients2.lock().await[i] = Client {
                         addr: None,
                         last_heard: 0.0,
                     }
@@ -156,21 +165,23 @@ async fn main() -> crate::Result<()> {
             }
         }
 
-        let serialized_world = common::serialize(world2.as_ref()).unwrap();
+        let serialized_world = common::serialize(&*world2.lock().await)?;
 
         // probably not best practise to send the entire world each tick?
-        for client in c.lock().await.iter() {
+        for client in clients2.lock().await.iter() {
             if let Some(addr) = client.addr {
                 let mut response = vec![common::ServerMessage::GameState as u8];
                 response.extend(serialized_world.iter().copied());
 
-                send(&s2, addr, response).await;
+                send(&s2, addr, response).await?;
             }
         }
     }
 }
 
-async fn send(socket: &UdpSocket, addr: SocketAddr, bytes: Vec<u8>) {
-    let len = socket.send_to(&bytes, &addr).await.unwrap();
+async fn send(socket: &UdpSocket, addr: SocketAddr, bytes: Vec<u8>) -> crate::Result<()> {
+    let len = socket.send_to(&bytes, &addr).await?;
     println!("{} bytes sent", len);
+
+    Ok(())
 }

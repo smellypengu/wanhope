@@ -106,7 +106,7 @@ impl Network {
 
                 socket.send(&send)?;
 
-                // get result
+                // get a result?
             }
             None => {}
         }
