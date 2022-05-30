@@ -193,6 +193,8 @@ impl App {
 
                     match event {
                         winit::event::WindowEvent::CloseRequested => {
+                            app.network.leave().unwrap(); // TODO: fix unwrap?
+
                             *control_flow = winit::event_loop::ControlFlow::Exit;
                             return;
                         }
@@ -209,7 +211,7 @@ impl App {
                             app.window.physical_cursor_position = None;
                         }
                         winit::event::WindowEvent::MouseInput { state, button, .. } => {
-                            app.mouse_input(state, button).unwrap(); // fix unwrap?
+                            app.mouse_input(state, button).unwrap(); // TODO: fix unwrap?
                         }
                         _ => {}
                     }
@@ -387,8 +389,8 @@ impl App {
 
                         if self.network.client_id.is_none() {
                             if ui.button("Connect").clicked() {
-                                if self.network.connect().is_err() {
-                                    ui.label("Failed to connect");
+                                if self.network.join().is_err() {
+                                    ui.label("Failed to join server");
                                 }
                             };
                         } else {

@@ -18,7 +18,7 @@ impl Network {
         }
     }
 
-    pub fn connect(&mut self) -> anyhow::Result<(), AppError> {
+    pub fn join(&mut self) -> anyhow::Result<(), AppError> {
         if self.client_id.is_none() {
             let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 
@@ -56,6 +56,17 @@ impl Network {
                     _ => {}
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    pub fn leave(&self) -> anyhow::Result<(), AppError> {
+        match &self.socket {
+            Some(socket) => {
+                socket.send(&[common::ClientMessage::Leave as u8])?;
+            }
+            None => {}
         }
 
         Ok(())
