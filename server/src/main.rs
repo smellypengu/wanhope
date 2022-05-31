@@ -23,6 +23,11 @@ const CLIENT_TIMEOUT: f32 = 5.0;
 
 #[tokio::main]
 async fn main() -> crate::Result<()> {
+    simple_logger::SimpleLogger::new()
+        .without_timestamps()
+        .init()
+        .unwrap();
+
     let world = Arc::new(Mutex::new(common::world::World::new(10, 10)));
     let world2 = world.clone();
 
@@ -44,11 +49,11 @@ async fn main() -> crate::Result<()> {
     let s = r.clone();
     let s2 = s.clone();
 
-    let (tx, mut rx) = mpsc::channel::<(Vec<u8>, SocketAddr)>(1_000);
+    let (tx, mut rx) = mpsc::channel::<(SocketAddr, common::ServerPacket, Vec<u8>)>(1_000);
 
     tokio::spawn(async move {
-        while let Some((bytes, addr)) = rx.recv().await {
-            send(&s, addr, bytes).await.unwrap();
+        while let Some((addr, packet, data)) = rx.recv().await {
+            send(&s, addr, packet, data).await.unwrap();
         }
     });
 
@@ -59,10 +64,10 @@ async fn main() -> crate::Result<()> {
             let mut buf = [0; 1024];
 
             let (len, addr) = r.recv_from(&mut buf).await.unwrap();
-            println!("{} bytes received from {}", len, addr);
+            log::debug!("{} bytes received from {}", len, addr);
 
-            match common::ClientMessage::try_from(buf[0]).unwrap() {
-                common::ClientMessage::Join => {
+            match common::ClientPacket::try_from(buf[0]).unwrap() {
+                common::ClientPacket::Join => {
                     let mut slot = -1;
 
                     for i in 0..MAX_CLIENTS {
@@ -73,10 +78,16 @@ async fn main() -> crate::Result<()> {
                     }
 
                     if slot != -1 {
-                        println!("client will be assigned to slot: {}", slot);
+                        log::info!("client will be assigned to slot: {}", slot);
 
-                        let response = vec![common::ServerMessage::JoinResult as u8, slot as u8];
-                        tx.send((response, addr)).await.unwrap();
+                        if tx
+                            .send((addr, common::ServerPacket::JoinResult, vec![slot as u8]))
+                            .await
+                            .is_err()
+                        {
+                            // TODO: handle better
+                            log::warn!("Failed to send");
+                        }
 
                         clients2.lock().await[slot as usize] = Client {
                             addr: Some(addr),
@@ -86,37 +97,44 @@ async fn main() -> crate::Result<()> {
                         // inform all other clients that a new client joined
                         for i in 0..MAX_CLIENTS {
                             if i != slot as usize {
-                                if let Some(addr) = clients2.lock().await[i].addr {
-                                    tx.send((
-                                        [common::ServerMessage::ClientJoining as u8].to_vec(),
-                                        addr,
-                                    ))
-                                    .await
-                                    .unwrap();
+                                if let Some(client_addr) = clients2.lock().await[i].addr {
+                                    if tx
+                                        .send((
+                                            client_addr,
+                                            common::ServerPacket::ClientJoining,
+                                            vec![],
+                                        ))
+                                        .await
+                                        .is_err()
+                                    {
+                                        // TODO: handle better
+                                        log::warn!("Failed to send");
+                                    }
                                 }
                             }
                         }
                     }
                 }
-                common::ClientMessage::Leave => {
+                common::ClientPacket::Leave => {
                     let client_id = buf[1];
 
-                    clients2.lock().await[client_id as usize] = Client {
-                        addr: None,
-                        last_heard: 0.0,
-                    };
+                    if let Some(client_addr) = clients2.lock().await[client_id as usize].addr {
+                        if addr.ip() == client_addr.ip() {
+                            clients2.lock().await[client_id as usize] = Client {
+                                addr: None,
+                                last_heard: 0.0,
+                            };
+                        } else {
+                            log::warn!("leave message from {} expected {}", addr, client_addr);
+                        }
+                    }
                 }
-                common::ClientMessage::KeepAlive => {
+                common::ClientPacket::KeepAlive => {
                     let client_id = buf[1];
 
                     clients2.lock().await[client_id as usize].last_heard = 0.0;
                 }
-                common::ClientMessage::WorldRequest => {
-                    tx.send((common::serialize(&*world.lock().await).unwrap(), addr))
-                        .await
-                        .unwrap();
-                }
-                common::ClientMessage::WorldClick => {
+                common::ClientPacket::WorldClick => {
                     let split = buf.split_at(2);
 
                     let client_id = split.0[1];
@@ -152,7 +170,7 @@ async fn main() -> crate::Result<()> {
                 client.last_heard += SECONDS_PER_TICK;
 
                 if client.last_heard > CLIENT_TIMEOUT {
-                    println!("client {} timed out", i);
+                    log::warn!("client {} timed out", i);
 
                     clients3.lock().await[i] = Client {
                         addr: None,
@@ -162,23 +180,34 @@ async fn main() -> crate::Result<()> {
             }
         }
 
-        let mut state = vec![common::ServerMessage::GameState as u8];
-
         let serialized_world = common::serialize(&*world2.lock().await)?;
-        state.extend(serialized_world.iter().copied());
 
         // probably not best practise to send the entire world each tick?
         for client in clients3.lock().await.iter() {
-            if let Some(addr) = client.addr {
-                send(&s2, addr, state.clone()).await?;
+            if let Some(client_addr) = client.addr {
+                send(
+                    &s2,
+                    client_addr,
+                    common::ServerPacket::GameState,
+                    serialized_world.clone(),
+                )
+                .await?;
             }
         }
     }
 }
 
-async fn send(socket: &UdpSocket, addr: SocketAddr, bytes: Vec<u8>) -> crate::Result<()> {
+async fn send(
+    socket: &UdpSocket,
+    addr: SocketAddr,
+    packet: common::ServerPacket,
+    data: Vec<u8>,
+) -> crate::Result<()> {
+    let mut bytes = vec![packet as u8];
+    bytes.extend(data.iter().copied());
+
     let len = socket.send_to(&bytes, &addr).await?;
-    println!("{} bytes sent", len);
+    log::debug!("{} bytes sent", len);
 
     Ok(())
 }

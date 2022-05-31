@@ -13,3 +13,6 @@ glam = { version = "0.20.5", features = ["serde"] }
 
 tokio = { version = "1.18.2", features = ["full"] }
 tokio-util = { version = "0.7.1", features = ["codec"] }
+
+log = "0.4.17"
+simple_logger = "1.16.0"

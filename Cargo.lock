@@ -259,6 +259,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "ndarray",
+ "num_enum",
  "serde",
 ]
 
@@ -1171,6 +1172,8 @@ version = "0.1.0"
 dependencies = [
  "common",
  "glam",
+ "log",
+ "simple_logger",
  "tokio",
  "tokio-util",
 ]

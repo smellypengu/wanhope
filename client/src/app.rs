@@ -250,12 +250,12 @@ impl App {
 
         if let (Some(server_message), payload) = self.network.update()? {
             match server_message {
-                common::ServerMessage::ClientJoining => {
+                common::ServerPacket::ClientJoining => {
                     println!("a new client joined the server!");
 
                     self.spawn_game_object()?;
                 }
-                common::ServerMessage::GameState => {
+                common::ServerPacket::GameState => {
                     self.world = common::deserialize(&payload).unwrap();
                 }
                 _ => {}

@@ -36,15 +36,15 @@ impl Network {
                 socket.connect(remote_addr)?;
 
                 // register as client in server
-                socket.send(&[common::ClientMessage::Join as u8])?;
+                socket.send(&[common::ClientPacket::Join as u8])?;
 
                 let mut response = vec![0u8; 2];
                 let len = socket.recv(&mut response)?;
 
-                let join_result = common::ServerMessage::try_from(response[0]).unwrap();
+                let join_result = common::ServerPacket::try_from(response[0]).unwrap();
 
                 match join_result {
-                    common::ServerMessage::JoinResult => {
+                    common::ServerPacket::JoinResult => {
                         if len > 1 as usize {
                             println!("user id: {}", response[1]);
 
@@ -64,7 +64,7 @@ impl Network {
     pub fn leave(&self) -> anyhow::Result<(), AppError> {
         match &self.socket {
             Some(socket) => {
-                socket.send(&[common::ClientMessage::Leave as u8])?;
+                socket.send(&[common::ClientPacket::Leave as u8])?;
             }
             None => {}
         }
@@ -72,7 +72,7 @@ impl Network {
         Ok(())
     }
 
-    pub fn update(&mut self) -> anyhow::Result<(Option<common::ServerMessage>, Vec<u8>), AppError> {
+    pub fn update(&mut self) -> anyhow::Result<(Option<common::ServerPacket>, Vec<u8>), AppError> {
         match &self.socket {
             Some(socket) => {
                 // set to nonblocking so recv() call doesn't freeze app, probably temporary
@@ -80,7 +80,7 @@ impl Network {
 
                 // TODO: figure out a better way to do this timer
                 if self.keep_alive_timer == 500 {
-                    socket.send(&[common::ClientMessage::KeepAlive as u8])?;
+                    socket.send(&[common::ClientPacket::KeepAlive as u8])?;
                     self.keep_alive_timer = 0;
                 }
 
@@ -91,7 +91,7 @@ impl Network {
                 match socket.recv(&mut data) {
                     Ok(len) => {
                         let x = data[..len].to_vec();
-                        let message = common::ServerMessage::try_from(x[0]).ok();
+                        let message = common::ServerPacket::try_from(x[0]).ok();
                         let payload = x.split_at(1).1.to_vec();
 
                         return Ok((message, payload));
@@ -109,7 +109,7 @@ impl Network {
         match &self.socket {
             Some(socket) => {
                 let mut send = vec![
-                    common::ClientMessage::WorldClick as u8,
+                    common::ClientPacket::WorldClick as u8,
                     self.client_id.unwrap(),
                 ];
 

@@ -2,46 +2,21 @@ use serde::{Deserialize, Serialize};
 
 pub mod world;
 
-pub enum ClientMessage {
+#[derive(num_enum::TryFromPrimitive)]
+#[repr(u8)]
+pub enum ClientPacket {
     Join,
     Leave,
     KeepAlive,
-    WorldRequest,
     WorldClick,
 }
 
-impl TryFrom<u8> for ClientMessage {
-    type Error = ();
-
-    fn try_from(val: u8) -> Result<Self, ()> {
-        match val {
-            0 => Ok(ClientMessage::Join),
-            1 => Ok(ClientMessage::Leave),
-            2 => Ok(ClientMessage::KeepAlive),
-            3 => Ok(ClientMessage::WorldRequest),
-            4 => Ok(ClientMessage::WorldClick),
-            _ => Err(()),
-        }
-    }
-}
-
-pub enum ServerMessage {
+#[derive(num_enum::TryFromPrimitive)]
+#[repr(u8)]
+pub enum ServerPacket {
     JoinResult,
     ClientJoining, // sent to all other clients when a new client joins
     GameState,
-}
-
-impl TryFrom<u8> for ServerMessage {
-    type Error = ();
-
-    fn try_from(val: u8) -> Result<Self, ()> {
-        match val {
-            0 => Ok(ServerMessage::JoinResult),
-            1 => Ok(ServerMessage::ClientJoining),
-            2 => Ok(ServerMessage::GameState),
-            _ => Err(()),
-        }
-    }
 }
 
 pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
