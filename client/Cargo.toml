@@ -14,7 +14,7 @@ glam = { version = "0.20.5", features = ["serde"] }
 
 tobj = "3.2.2"
 
-egui = "0.18.0"
+egui = "0.18.1"
 egui-winit = "0.18.0"
 
 ash = "0.37.0"
@@ -26,11 +26,11 @@ rand = "0.8.5"
 
 bytemuck = "1.9.1"
 
-indexmap = "1.8.1"
+indexmap = "1.8.2"
 ordered-float = "3.0.0"
 
 thiserror = "1.0.31"
-anyhow = "1.0.56"
+anyhow = "1.0.57"
 
 log = "0.4.17"
-simple_logger = "1.16.0"
+simple_logger = "2.1.0"
