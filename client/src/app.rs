@@ -14,7 +14,7 @@ use crate::{
         },
         Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
     },
-    network::Network,
+    network::{Network, NetworkError},
     Input, KeyboardMovementController,
 };
 
@@ -57,8 +57,8 @@ impl App {
         // window.set_cursor_position(glam::Vec2::new(200.0, 200.0));
 
         let device = Device::new(
-            CString::new("test").unwrap(),
-            CString::new("test").unwrap(),
+            CString::new("wanhope").unwrap(),
+            CString::new("wanhope").unwrap(),
             window.inner(),
         )?;
 
@@ -388,9 +388,17 @@ impl App {
                         ui.separator();
 
                         if self.network.client_id.is_none() {
+                            ui.horizontal(|ui| {
+                                ui.label("Username: ");
+                                ui.text_edit_singleline(&mut self.network.username);
+                            });
+
                             if ui.button("Connect").clicked() {
-                                if self.network.join().is_err() {
-                                    ui.label("Failed to join server");
+                                match self.network.join() {
+                                    Err(err) => {
+                                        ui.label(format!("Failed to join server: {}", err));
+                                    }
+                                    _ => {}
                                 }
                             };
                         } else {
@@ -606,5 +614,5 @@ pub enum AppError {
     #[error("")]
     RenderError(#[from] RenderError),
     #[error("")]
-    NetworkError(#[from] io::Error),
+    NetworkError(#[from] NetworkError),
 }

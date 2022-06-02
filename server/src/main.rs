@@ -10,8 +10,9 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 struct Client {
+    username: Option<String>,
     addr: Option<SocketAddr>,
     last_heard: f32,
 }
@@ -32,10 +33,13 @@ async fn main() -> crate::Result<()> {
     let world2 = world.clone();
 
     let clients = Arc::new(Mutex::new(
-        [Client {
+        std::iter::repeat_with(|| Client {
+            username: None,
             addr: None,
             last_heard: 0.0,
-        }; MAX_CLIENTS],
+        })
+        .take(MAX_CLIENTS)
+        .collect::<Vec<_>>(),
     ));
 
     let addr = env::args()
@@ -89,7 +93,12 @@ async fn main() -> crate::Result<()> {
                             log::warn!("Failed to send");
                         }
 
+                        let split = buf.split_at(1);
+
+                        let username = std::str::from_utf8(split.1).unwrap().to_string();
+
                         clients2.lock().await[slot as usize] = Client {
+                            username: Some(username),
                             addr: Some(addr),
                             last_heard: 0.0,
                         };
@@ -121,6 +130,7 @@ async fn main() -> crate::Result<()> {
                     if let Some(client_addr) = clients2.lock().await[client_id as usize].addr {
                         if addr.ip() == client_addr.ip() {
                             clients2.lock().await[client_id as usize] = Client {
+                                username: None,
                                 addr: None,
                                 last_heard: 0.0,
                             };
@@ -173,6 +183,7 @@ async fn main() -> crate::Result<()> {
                     log::warn!("client {} timed out", i);
 
                     clients3.lock().await[i] = Client {
+                        username: None,
                         addr: None,
                         last_heard: 0.0,
                     }
