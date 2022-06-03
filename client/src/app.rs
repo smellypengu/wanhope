@@ -46,7 +46,7 @@ pub struct App {
 
     network: Network,
 
-    world: common::world::World,
+    world: Option<common::world::World>,
 }
 
 impl App {
@@ -126,9 +126,7 @@ impl App {
         let mut viewer_object = GameObject::new(None, None, None);
         viewer_object.transform.translation.z = 2.5;
 
-        let world = common::world::World::new(10, 10);
-
-        let (game_objects, select_id) = Self::load_game_objects(device.clone(), &world)?;
+        let (game_objects, select_id) = Self::load_game_objects(device.clone())?;
 
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
@@ -170,7 +168,7 @@ impl App {
 
             network: Network::new(),
 
-            world,
+            world: None,
         })
     }
 
@@ -256,7 +254,16 @@ impl App {
                     self.spawn_game_object()?;
                 }
                 common::ServerPacket::GameState => {
-                    self.world = common::deserialize(&payload).unwrap();
+                    if let Some(world) = common::deserialize(&payload).ok() {
+                        log::info!("DOESNT WORK WHYYY");
+
+                        if self.world.is_none() {
+                            self.create_world(&world)?;
+                        }
+    
+                        self.world = Some(world);
+                    }
+
                 }
                 _ => {}
             }
@@ -270,44 +277,47 @@ impl App {
         state: winit::event::ElementState,
         button: winit::event::MouseButton,
     ) -> anyhow::Result<(), AppError> {
-        if state == winit::event::ElementState::Pressed && button == winit::event::MouseButton::Left
-        {
-            if let Some(cursor_position) = self.window.cursor_position() {
-                if let Some(ray) = crate::graphics::Ray::from_screenspace(
-                    cursor_position,
-                    glam::vec2(
-                        self.window.inner().inner_size().width as f32,
-                        self.window.inner().inner_size().height as f32,
-                    ),
-                    self.camera.as_ref().unwrap(),
-                ) {
-                    let plane = crate::graphics::Plane {
-                        center: glam::Vec3::ZERO,
-                        normal: glam::Vec3::Y,
-                    };
+        if let Some(world) = &self.world {
+            if state == winit::event::ElementState::Pressed
+                && button == winit::event::MouseButton::Left
+            {
+                if let Some(cursor_position) = self.window.cursor_position() {
+                    if let Some(ray) = crate::graphics::Ray::from_screenspace(
+                        cursor_position,
+                        glam::vec2(
+                            self.window.inner().inner_size().width as f32,
+                            self.window.inner().inner_size().height as f32,
+                        ),
+                        self.camera.as_ref().unwrap(),
+                    ) {
+                        let plane = crate::graphics::Plane {
+                            center: glam::Vec3::ZERO,
+                            normal: glam::Vec3::Y,
+                        };
 
-                    if let Some(distance) = plane.intersect(&ray) {
-                        let point = ray.origin + ray.dir * distance;
+                        if let Some(distance) = plane.intersect(&ray) {
+                            let point = ray.origin + ray.dir * distance;
 
-                        let position =
-                            (glam::vec3((point.x - 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0)
-                                * 10.0)
-                                .round();
+                            let position =
+                                (glam::vec3((point.x - 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0)
+                                    * 10.0)
+                                    .round();
 
-                        log::info!("{}", position);
+                            log::info!("{}", position);
 
-                        if position.x >= 0.0
-                            && position.z < 1.0
-                            && position.x < self.world.width as f32
-                            && position.z > -(self.world.height as f32)
-                        {
-                            self.network.send_client_world_click(position.xz().abs())?;
+                            if position.x >= 0.0
+                                && position.z < 1.0
+                                && position.x < world.width as f32
+                                && position.z > -(world.height as f32)
+                            {
+                                self.network.send_client_world_click(position.xz().abs())?;
 
-                            self.game_objects
-                                .get_mut(&self.select_id)
-                                .unwrap()
-                                .transform
-                                .translation = position + glam::vec3(0.5, 0.0, -0.5);
+                                self.game_objects
+                                    .get_mut(&self.select_id)
+                                    .unwrap()
+                                    .transform
+                                    .translation = position + glam::vec3(0.5, 0.0, -0.5);
+                            }
                         }
                     }
                 }
@@ -406,6 +416,14 @@ impl App {
                                 "Connected to {}",
                                 self.network.server_ip().unwrap()
                             ));
+
+                            if let Some(world) = &self.world {
+                                for player in &world.players {
+                                    if let Some(player) = player {
+                                        ui.label(format!("{}", player.username));
+                                    }
+                                }
+                            }
                         }
 
                         ui.separator();
@@ -466,9 +484,52 @@ impl App {
         Ok(())
     }
 
+    fn create_world(&mut self, world: &common::world::World) -> anyhow::Result<(), AppError> {
+        let mut vertices: Vec<Vertex> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+
+        let div = 10;
+
+        let triangle_side = (world.width / div) as f32;
+
+        for x in 0..div + 1 {
+            for y in 0..div + 1 {
+                vertices.push(Vertex {
+                    position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
+                    color: glam::vec3(0.0, 0.0, 0.5),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(0.0, 0.0),
+                });
+            }
+        }
+
+        for x in 0..div {
+            for y in 0..div {
+                let index = x * (div + 1) + y;
+
+                // Top triangle in tile
+                indices.push(index as u32);
+                indices.push((index + (div + 1) + 1) as u32);
+                indices.push((index + (div + 1)) as u32);
+
+                // Bottom triangle in tile
+                indices.push(index as u32);
+                indices.push((index + 1) as u32);
+                indices.push((index + (div + 1) + 1) as u32);
+            }
+        }
+
+        let model = Model::new(self.device.clone(), &vertices, Some(&indices))?;
+
+        let obj = GameObject::new(Some(model), None, None);
+
+        self.game_objects.insert(obj.id, obj);
+
+        Ok(())
+    }
+
     fn load_game_objects(
         device: Rc<Device>,
-        world: &common::world::World,
     ) -> anyhow::Result<(HashMap<u8, GameObject>, u8), AppError> {
         let mut game_objects = HashMap::new();
 
@@ -545,46 +606,6 @@ impl App {
 
             game_objects.insert(point_light.id, point_light);
         }
-
-        let mut vertices: Vec<Vertex> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
-
-        let div = 10;
-
-        let triangle_side = (world.width / div) as f32;
-
-        for x in 0..div + 1 {
-            for y in 0..div + 1 {
-                vertices.push(Vertex {
-                    position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
-                    color: glam::vec3(0.0, 0.0, 0.5),
-                    normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(0.0, 0.0),
-                });
-            }
-        }
-
-        for x in 0..div {
-            for y in 0..div {
-                let index = x * (div + 1) + y;
-
-                // Top triangle in tile
-                indices.push(index as u32);
-                indices.push((index + (div + 1) + 1) as u32);
-                indices.push((index + (div + 1)) as u32);
-
-                // Bottom triangle in tile
-                indices.push(index as u32);
-                indices.push((index + 1) as u32);
-                indices.push((index + (div + 1) + 1) as u32);
-            }
-        }
-
-        let model = Model::new(device.clone(), &vertices, Some(&indices))?;
-
-        let obj = GameObject::new(Some(model), None, None);
-
-        game_objects.insert(obj.id, obj);
 
         let select_model = Model::from_file(
             device.clone(),

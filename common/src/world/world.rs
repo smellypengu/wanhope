@@ -3,14 +3,25 @@ use serde::{Deserialize, Serialize};
 use super::{Tile, TileType};
 
 #[derive(Serialize, Deserialize)]
+pub struct Player {
+    pub username: String,
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct World {
+    pub players: Vec<Option<Player>>,
+
     pub tiles: ndarray::Array2<Tile>,
     pub width: usize,
     pub height: usize,
 }
 
 impl World {
-    pub fn new(width: usize, height: usize) -> Self {
+    pub fn new(max_players: usize, width: usize, height: usize) -> Self {
+        let players = std::iter::repeat_with(|| None)
+            .take(max_players)
+            .collect::<Vec<_>>();
+
         let tiles = ndarray::Array2::from_elem(
             (width, height),
             Tile {
@@ -19,6 +30,8 @@ impl World {
         );
 
         Self {
+            players,
+
             tiles,
             width,
             height,

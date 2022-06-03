@@ -10,9 +10,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
 struct Client {
-    username: Option<String>,
     addr: Option<SocketAddr>,
     last_heard: f32,
 }
@@ -29,12 +27,11 @@ async fn main() -> crate::Result<()> {
         .init()
         .unwrap();
 
-    let world = Arc::new(Mutex::new(common::world::World::new(10, 10)));
+    let world = Arc::new(Mutex::new(common::world::World::new(MAX_CLIENTS, 10, 10)));
     let world2 = world.clone();
 
     let clients = Arc::new(Mutex::new(
         std::iter::repeat_with(|| Client {
-            username: None,
             addr: None,
             last_heard: 0.0,
         })
@@ -98,10 +95,12 @@ async fn main() -> crate::Result<()> {
                         let username = std::str::from_utf8(split.1).unwrap().to_string();
 
                         clients2.lock().await[slot as usize] = Client {
-                            username: Some(username),
                             addr: Some(addr),
                             last_heard: 0.0,
                         };
+
+                        world.lock().await.players[slot as usize] =
+                            Some(common::world::Player { username });
 
                         // inform all other clients that a new client joined
                         for i in 0..MAX_CLIENTS {
@@ -130,10 +129,11 @@ async fn main() -> crate::Result<()> {
                     if let Some(client_addr) = clients2.lock().await[client_id as usize].addr {
                         if addr.ip() == client_addr.ip() {
                             clients2.lock().await[client_id as usize] = Client {
-                                username: None,
                                 addr: None,
                                 last_heard: 0.0,
                             };
+
+                            world.lock().await.players[client_id as usize] = None;
                         } else {
                             log::warn!("leave message from {} expected {}", addr, client_addr);
                         }
@@ -183,10 +183,11 @@ async fn main() -> crate::Result<()> {
                     log::warn!("client {} timed out", i);
 
                     clients3.lock().await[i] = Client {
-                        username: None,
                         addr: None,
                         last_heard: 0.0,
-                    }
+                    };
+
+                    world2.lock().await.players[i] = None;
                 }
             }
         }

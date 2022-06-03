@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 
 pub mod world;
 
+#[derive(Serialize, Deserialize)]
+pub struct Player {
+    pub username: String,
+}
+
 #[derive(num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum ClientPacket {
