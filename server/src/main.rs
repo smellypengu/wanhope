@@ -11,7 +11,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 struct Client {
-    addr: Option<SocketAddr>,
+    addr: SocketAddr,
     last_heard: f32,
 }
 
@@ -24,19 +24,15 @@ const CLIENT_TIMEOUT: f32 = 5.0;
 async fn main() -> crate::Result<()> {
     simple_logger::SimpleLogger::new()
         .without_timestamps()
-        .init()
-        .unwrap();
+        .init()?;
 
     let world = Arc::new(Mutex::new(common::world::World::new(MAX_CLIENTS, 10, 10)));
     let world2 = world.clone();
 
     let clients = Arc::new(Mutex::new(
-        std::iter::repeat_with(|| Client {
-            addr: None,
-            last_heard: 0.0,
-        })
-        .take(MAX_CLIENTS)
-        .collect::<Vec<_>>(),
+        std::iter::repeat_with(|| None)
+            .take(MAX_CLIENTS)
+            .collect::<Vec<_>>(),
     ));
 
     let addr = env::args()
@@ -72,7 +68,7 @@ async fn main() -> crate::Result<()> {
                     let mut slot = -1;
 
                     for i in 0..MAX_CLIENTS {
-                        if clients2.lock().await[i].addr.is_none() {
+                        if clients2.lock().await[i].is_none() {
                             slot = i as i8;
                             break;
                         }
@@ -92,24 +88,27 @@ async fn main() -> crate::Result<()> {
 
                         let split = buf.split_at(1);
 
-                        let username = std::str::from_utf8(split.1).unwrap().to_string();
+                        let username = std::str::from_utf8(split.1)
+                            .unwrap()
+                            .trim_matches(char::from(0))
+                            .to_string();
 
-                        clients2.lock().await[slot as usize] = Client {
-                            addr: Some(addr),
+                        clients2.lock().await[slot as usize] = Some(Client {
+                            addr,
                             last_heard: 0.0,
-                        };
+                        });
 
                         world.lock().await.players[slot as usize] =
                             Some(common::world::Player { username });
 
-                        // inform all other clients that a new client joined
+                        // inform all other clients that a client joined the server
                         for i in 0..MAX_CLIENTS {
                             if i != slot as usize {
-                                if let Some(client_addr) = clients2.lock().await[i].addr {
+                                if let Some(client) = &clients2.lock().await[i] {
                                     if tx
                                         .send((
-                                            client_addr,
-                                            common::ServerPacket::ClientJoining,
+                                            client.addr,
+                                            common::ServerPacket::ClientJoin,
                                             vec![],
                                         ))
                                         .await
@@ -126,43 +125,60 @@ async fn main() -> crate::Result<()> {
                 common::ClientPacket::Leave => {
                     let client_id = buf[1];
 
-                    if let Some(client_addr) = clients2.lock().await[client_id as usize].addr {
-                        if addr.ip() == client_addr.ip() {
-                            clients2.lock().await[client_id as usize] = Client {
-                                addr: None,
-                                last_heard: 0.0,
-                            };
+                    clients2.lock().await[client_id as usize] = None;
 
-                            world.lock().await.players[client_id as usize] = None;
-                        } else {
-                            log::warn!("leave message from {} expected {}", addr, client_addr);
+                    world.lock().await.players[client_id as usize] = None;
+
+                    // inform all other clients that a client left the server
+                    for i in 0..MAX_CLIENTS {
+                        if i != client_id as usize {
+                            if let Some(client) = &clients2.lock().await[i] {
+                                if tx
+                                    .send((client.addr, common::ServerPacket::ClientLeave, vec![]))
+                                    .await
+                                    .is_err()
+                                {
+                                    // TODO: handle better
+                                    log::warn!("Failed to send");
+                                }
+                            }
                         }
                     }
                 }
                 common::ClientPacket::KeepAlive => {
                     let client_id = buf[1];
 
-                    clients2.lock().await[client_id as usize].last_heard = 0.0;
+                    if let Some(client) = &mut clients2.lock().await[client_id as usize] {
+                        if verify_client(addr, client.addr) {
+                            client.last_heard = 0.0;
+                        }
+                    }
                 }
                 common::ClientPacket::WorldClick => {
                     let split = buf.split_at(2);
 
                     let client_id = split.0[1];
+                    if let Some(client) = &mut clients2.lock().await[client_id as usize] {
+                        if verify_client(addr, client.addr) {
+                            let deserialized_position: bincode::serde::Compat<glam::Vec2> =
+                                bincode::decode_from_slice(split.1, bincode::config::standard())
+                                    .unwrap()
+                                    .0;
 
-                    let deserialized_position: glam::Vec2 = common::deserialize(split.1).unwrap();
+                            world
+                                .lock()
+                                .await
+                                .tiles
+                                .get_mut((
+                                    deserialized_position.0.x as usize,
+                                    deserialized_position.0.y as usize,
+                                ))
+                                .unwrap()
+                                .ty = common::world::TileType::Floor;
 
-                    world
-                        .lock()
-                        .await
-                        .tiles
-                        .get_mut((
-                            deserialized_position.x as usize,
-                            deserialized_position.y as usize,
-                        ))
-                        .unwrap()
-                        .ty = common::world::TileType::Floor;
-
-                    // send a result?
+                            // send a result?
+                        }
+                    }
                 }
             }
         }
@@ -175,31 +191,44 @@ async fn main() -> crate::Result<()> {
     loop {
         interval.tick().await;
 
-        for (i, client) in clients3.lock().await.iter_mut().enumerate() {
-            if client.addr.is_some() {
+        for (client_id, client) in clients3.lock().await.iter_mut().enumerate() {
+            if let Some(client) = client {
                 client.last_heard += SECONDS_PER_TICK;
 
                 if client.last_heard > CLIENT_TIMEOUT {
-                    log::warn!("client {} timed out", i);
+                    log::warn!("client {} timed out", client_id);
 
-                    clients3.lock().await[i] = Client {
-                        addr: None,
-                        last_heard: 0.0,
-                    };
+                    clients3.lock().await[client_id] = None;
 
-                    world2.lock().await.players[i] = None;
+                    world2.lock().await.players[client_id] = None;
+
+                    // inform all other clients that a client left the server
+                    for i in 0..MAX_CLIENTS {
+                        if i != client_id as usize {
+                            if let Some(client) = &clients3.lock().await[i] {
+                                if send(&s2, client.addr, common::ServerPacket::ClientLeave, vec![])
+                                    .await
+                                    .is_err()
+                                {
+                                    // TODO: handle better
+                                    log::warn!("Failed to send");
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        let serialized_world = common::serialize(&*world2.lock().await)?;
+        let serialized_world =
+            bincode::encode_to_vec(&*world2.lock().await, bincode::config::standard())?;
 
         // probably not best practise to send the entire world each tick?
         for client in clients3.lock().await.iter() {
-            if let Some(client_addr) = client.addr {
+            if let Some(client) = client {
                 send(
                     &s2,
-                    client_addr,
+                    client.addr,
                     common::ServerPacket::GameState,
                     serialized_world.clone(),
                 )
@@ -207,6 +236,15 @@ async fn main() -> crate::Result<()> {
             }
         }
     }
+}
+
+fn verify_client(addr1: SocketAddr, addr2: SocketAddr) -> bool {
+    if addr1.ip() == addr2.ip() {
+        return true;
+    }
+
+    log::warn!("message from {} expected {}", addr1, addr2);
+    return false;
 }
 
 async fn send(

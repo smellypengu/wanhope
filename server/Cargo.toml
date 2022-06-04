@@ -13,5 +13,7 @@ glam = { version = "0.20.5", features = ["serde"] }
 
 tokio = { version = "1.18.2", features = ["full"] }
 
+bincode = { version = "2.0.0-rc.1", features = ["serde"] }
+
 log = "0.4.17"
 simple_logger = "2.1.0"

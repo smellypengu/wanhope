@@ -248,22 +248,23 @@ impl App {
 
         if let (Some(server_message), payload) = self.network.update()? {
             match server_message {
-                common::ServerPacket::ClientJoining => {
-                    println!("a new client joined the server!");
-
-                    self.spawn_game_object()?;
+                common::ServerPacket::ClientJoin => {
+                    log::info!("a client joined the server!");
+                }
+                common::ServerPacket::ClientLeave => {
+                    log::info!("a client left the server!");
                 }
                 common::ServerPacket::GameState => {
-                    if let Some(world) = common::deserialize(&payload).ok() {
-                        log::info!("DOESNT WORK WHYYY");
+                    let world: common::world::World =
+                        bincode::decode_from_slice(&payload, bincode::config::standard())
+                            .unwrap()
+                            .0;
 
-                        if self.world.is_none() {
-                            self.create_world(&world)?;
-                        }
-    
-                        self.world = Some(world);
+                    if self.world.is_none() {
+                        self.create_world(&world)?;
                     }
 
+                    self.world = Some(world);
                 }
                 _ => {}
             }
@@ -413,10 +414,12 @@ impl App {
                             };
                         } else {
                             ui.label(format!(
-                                "Connected to {}",
-                                self.network.server_ip().unwrap()
+                                "Connected to {} as {}",
+                                self.network.server_ip().unwrap(),
+                                self.network.client_id.unwrap(),
                             ));
 
+                            ui.label("Players:");
                             if let Some(world) = &self.world {
                                 for player in &world.players {
                                     if let Some(player) = player {
@@ -451,35 +454,6 @@ impl App {
             &self.renderer.swapchain,
             self.renderer.swapchain.swapchain_image_format,
         )?;
-
-        Ok(())
-    }
-
-    pub fn spawn_game_object(&mut self) -> anyhow::Result<(), AppError> {
-        // shouldn't be loading new model each time, temporary
-        let flat_vase_model = Model::from_file(
-            self.device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode
-        )?;
-
-        let mut rng = rand::thread_rng();
-
-        // random is temporary
-        let flat_vase = GameObject::new(
-            Some(flat_vase_model),
-            None,
-            Some(TransformComponent {
-                translation: glam::vec3(
-                    rng.gen_range(-10..10) as f32,
-                    0.0,
-                    rng.gen_range(-10..10) as f32,
-                ),
-                scale: glam::Vec3::ONE,
-                rotation: glam::Vec3::ZERO,
-            }),
-        );
-
-        self.game_objects.insert(flat_vase.id, flat_vase);
 
         Ok(())
     }

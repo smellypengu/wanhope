@@ -78,7 +78,7 @@ impl Network {
     pub fn leave(&self) -> anyhow::Result<(), NetworkError> {
         match &self.socket {
             Some(socket) => {
-                socket.send(&[common::ClientPacket::Leave as u8])?;
+                socket.send(&[common::ClientPacket::Leave as u8, self.client_id.unwrap()])?;
             }
             None => {}
         }
@@ -96,7 +96,10 @@ impl Network {
 
                 // TODO: figure out a better way to do this timer
                 if self.keep_alive_timer == 500 {
-                    socket.send(&[common::ClientPacket::KeepAlive as u8])?;
+                    socket.send(&[
+                        common::ClientPacket::KeepAlive as u8,
+                        self.client_id.unwrap(),
+                    ])?;
                     self.keep_alive_timer = 0;
                 }
 
@@ -132,7 +135,12 @@ impl Network {
                     self.client_id.unwrap(),
                 ];
 
-                send.extend(&mut common::serialize(&position).unwrap().iter().copied());
+                send.extend(
+                    &mut bincode::serde::encode_to_vec(&position, bincode::config::standard())
+                        .unwrap()
+                        .iter()
+                        .copied(),
+                );
 
                 socket.send(&send)?;
 

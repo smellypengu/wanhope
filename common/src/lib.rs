@@ -20,20 +20,7 @@ pub enum ClientPacket {
 #[repr(u8)]
 pub enum ServerPacket {
     JoinResult,
-    ClientJoining, // sent to all other clients when a new client joins
+    ClientJoin, // sent to all other clients when a client joins the server
+    ClientLeave, // sent to all other clients when a client leaves the server
     GameState,
-}
-
-pub fn serialize<T>(value: &T) -> Result<Vec<u8>, bincode::Error>
-where
-    T: ?Sized + Serialize,
-{
-    bincode::serialize(&value)
-}
-
-pub fn deserialize<'a, T>(bytes: &'a [u8]) -> Result<T, bincode::Error>
-where
-    T: Deserialize<'a>,
-{
-    bincode::deserialize(&bytes)
 }

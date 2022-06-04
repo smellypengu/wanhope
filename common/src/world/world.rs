@@ -1,16 +1,15 @@
-use serde::{Deserialize, Serialize};
-
 use super::{Tile, TileType};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct Player {
     pub username: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, bincode::Encode, bincode::Decode)]
 pub struct World {
     pub players: Vec<Option<Player>>,
 
+    #[bincode(with_serde)]
     pub tiles: ndarray::Array2<Tile>,
     pub width: usize,
     pub height: usize,
