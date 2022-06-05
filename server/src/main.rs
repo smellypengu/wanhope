@@ -10,6 +10,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
+#[derive(Debug)]
 struct Client {
     addr: SocketAddr,
     last_heard: f32,
@@ -125,14 +126,16 @@ async fn main() -> crate::Result<()> {
                 common::ClientPacket::Leave => {
                     let client_id = buf[1];
 
-                    clients2.lock().await[client_id as usize] = None;
+                    let c = &mut clients2.lock().await;
+
+                    c[client_id as usize] = None;
 
                     world.lock().await.players[client_id as usize] = None;
 
                     // inform all other clients that a client left the server
                     for i in 0..MAX_CLIENTS {
                         if i != client_id as usize {
-                            if let Some(client) = &clients2.lock().await[i] {
+                            if let Some(client) = &c[i] {
                                 if tx
                                     .send((client.addr, common::ServerPacket::ClientLeave, vec![]))
                                     .await
@@ -154,10 +157,47 @@ async fn main() -> crate::Result<()> {
                         }
                     }
                 }
+                common::ClientPacket::Chat => {
+                    let client_id = buf[1];
+
+                    let c = &mut clients2.lock().await;
+
+                    if let Some(client) = &mut c[client_id as usize] {
+                        if verify_client(addr, client.addr) {
+                            let split = buf.split_at(1);
+
+                            // should always be some
+                            if let Some(player) = &world.lock().await.players[client_id as usize] {
+                                let message = player.username.clone()
+                                    + ": "
+                                    + std::str::from_utf8(split.1).unwrap();
+
+                                // send chat message to all clients
+                                for i in 0..MAX_CLIENTS {
+                                    if let Some(client) = &c[i] {
+                                        if tx
+                                            .send((
+                                                client.addr,
+                                                common::ServerPacket::Chat,
+                                                message.as_bytes().to_vec(),
+                                            ))
+                                            .await
+                                            .is_err()
+                                        {
+                                            // TODO: handle better
+                                            log::warn!("Failed to send");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 common::ClientPacket::WorldClick => {
                     let split = buf.split_at(2);
 
                     let client_id = split.0[1];
+
                     if let Some(client) = &mut clients2.lock().await[client_id as usize] {
                         if verify_client(addr, client.addr) {
                             let deserialized_position: bincode::serde::Compat<glam::Vec2> =

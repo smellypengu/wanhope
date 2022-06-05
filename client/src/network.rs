@@ -124,6 +124,24 @@ impl Network {
         Ok((None, vec![]))
     }
 
+    pub fn send_chat_message(&self, message: &String) -> anyhow::Result<(), NetworkError> {
+        match &self.socket {
+            Some(socket) => {
+                let mut send = vec![
+                    common::ClientPacket::Chat as u8,
+                    self.client_id.unwrap(),
+                ];
+
+                send.extend(message.as_bytes().iter().copied());
+
+                socket.send(&send)?;
+            }
+            None => {}
+        }
+
+        Ok(())
+    } 
+
     pub fn send_client_world_click(
         &self,
         position: glam::Vec2,

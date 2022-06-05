@@ -47,6 +47,9 @@ pub struct App {
     network: Network,
 
     world: Option<common::world::World>,
+
+    text: String,
+    messages: Vec<String>,
 }
 
 impl App {
@@ -169,6 +172,9 @@ impl App {
             network: Network::new(),
 
             world: None,
+
+            text: "".to_string(),
+            messages: Vec::new(),
         })
     }
 
@@ -253,6 +259,14 @@ impl App {
                 }
                 common::ServerPacket::ClientLeave => {
                     log::info!("a client left the server!");
+                }
+                common::ServerPacket::Chat => {
+                    let message = std::str::from_utf8(&payload)
+                        .unwrap()
+                        .trim_matches(char::from(0))
+                        .to_string();
+
+                    self.messages.push(message);
                 }
                 common::ServerPacket::GameState => {
                     let world: common::world::World =
@@ -384,7 +398,7 @@ impl App {
                 self.egui_integration.begin_frame(&self.window);
 
                 egui::TopBottomPanel::top("top_panel").show(
-                    &self.egui_integration.egui_ctx,
+                    &self.egui_integration.egui_ctx.clone(),
                     |ui| {
                         egui::menu::bar(ui, |ui| {
                             ui.menu_button("File", |ui| if ui.button("Test").clicked() {});
@@ -392,7 +406,7 @@ impl App {
                     },
                 );
 
-                egui::SidePanel::left("my_side_panel").show(
+                egui::SidePanel::left("side_panel").show(
                     &self.egui_integration.egui_ctx.clone(),
                     |ui| {
                         ui.heading("Wanhope");
@@ -430,6 +444,29 @@ impl App {
                         }
 
                         ui.separator();
+                    },
+                );
+
+                egui::Window::new("Chat").resizable(false).show(
+                    &self.egui_integration.egui_ctx.clone(),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .max_height(200.0)
+                            .stick_to_bottom()
+                            .show(ui, |ui| {
+                                for message in &self.messages {
+                                    ui.label(message);
+                                }
+                            });
+
+                        ui.horizontal(|ui| {
+                            ui.text_edit_singleline(&mut self.text);
+                            if ui.button("Send").clicked() {
+                                self.network.send_chat_message(&self.text).unwrap(); // TODO: fix unwrap?
+                                self.text = "".to_string();
+                            };
+                        });
                     },
                 );
 
