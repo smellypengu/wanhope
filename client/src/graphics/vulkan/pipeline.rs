@@ -107,8 +107,8 @@ impl PipelineBuilder {
         };
 
         let pipeline_info = PipelineInfo {
-            binding_descriptions: vec![],
-            attribute_descriptions: vec![],
+            binding_descriptions: Vec::new(),
+            attribute_descriptions: Vec::new(),
 
             input_assembly_info,
             viewport_info,

@@ -1,11 +1,13 @@
+use bincode::{Decode, Encode};
+
 use super::{Tile, TileType};
 
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Encode, Decode)]
 pub struct Player {
     pub username: String,
 }
 
-#[derive(Debug, bincode::Encode, bincode::Decode)]
+#[derive(Debug, Encode, Decode)]
 pub struct World {
     pub players: Vec<Option<Player>>,
 

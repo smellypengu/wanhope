@@ -1,7 +1,7 @@
 mod buffer;
 pub mod descriptor_set;
 mod device;
-pub mod egui;
+mod egui_integration;
 mod image_view;
 mod instance;
 mod model;
@@ -12,6 +12,7 @@ mod swapchain;
 
 pub use buffer::*;
 pub use device::*;
+pub use egui_integration::*;
 pub use image_view::*;
 pub use instance::*;
 pub use model::*;

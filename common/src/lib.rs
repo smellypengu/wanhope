@@ -1,8 +1,8 @@
-use serde::{Deserialize, Serialize};
+use bincode::{Decode, Encode};
 
 pub mod world;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Encode, Decode)]
 pub struct Player {
     pub username: String,
 }
@@ -21,7 +21,7 @@ pub enum ClientPacket {
 #[repr(u8)]
 pub enum ServerPacket {
     JoinResult,
-    ClientJoin, // sent to all other clients when a client joins the server
+    ClientJoin,  // sent to all other clients when a client joins the server
     ClientLeave, // sent to all other clients when a client leaves the server
     Chat,
     GameState,

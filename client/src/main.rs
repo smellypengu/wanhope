@@ -1,4 +1,5 @@
 mod app;
+mod egui;
 mod game_object;
 mod graphics;
 mod input;

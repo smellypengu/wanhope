@@ -57,7 +57,7 @@ impl EGuiIntegration {
         };
 
         let descriptor_set_layouts = {
-            let mut sets = vec![];
+            let mut sets = Vec::new();
             for _ in 0..swapchain.swapchain_images.len() {
                 let layout = unsafe {
                     DescriptorSetLayout::new(device.clone())
@@ -127,8 +127,8 @@ impl EGuiIntegration {
             surface_format,
         );
 
-        let mut vertex_buffers = vec![];
-        let mut index_buffers = vec![];
+        let mut vertex_buffers = Vec::new();
+        let mut index_buffers = Vec::new();
 
         for _ in 0..framebuffers.len() {
             let mut vertex_buffer = Buffer::new(
@@ -175,7 +175,7 @@ impl EGuiIntegration {
                 | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?; // Would like to not do it like this but that's for future me to fix.
 
-        let user_textures = vec![];
+        let user_textures = Vec::new();
 
         Ok(Self {
             egui_ctx,

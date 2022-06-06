@@ -110,7 +110,7 @@ async fn main() -> crate::Result<()> {
                                         .send((
                                             client.addr,
                                             common::ServerPacket::ClientJoin,
-                                            vec![],
+                                            Vec::new(),
                                         ))
                                         .await
                                         .is_err()
@@ -137,7 +137,7 @@ async fn main() -> crate::Result<()> {
                         if i != client_id as usize {
                             if let Some(client) = &c[i] {
                                 if tx
-                                    .send((client.addr, common::ServerPacket::ClientLeave, vec![]))
+                                    .send((client.addr, common::ServerPacket::ClientLeave, Vec::new()))
                                     .await
                                     .is_err()
                                 {
@@ -246,7 +246,7 @@ async fn main() -> crate::Result<()> {
                     for i in 0..MAX_CLIENTS {
                         if i != client_id as usize {
                             if let Some(client) = &clients3.lock().await[i] {
-                                if send(&s2, client.addr, common::ServerPacket::ClientLeave, vec![])
+                                if send(&s2, client.addr, common::ServerPacket::ClientLeave, Vec::new())
                                     .await
                                     .is_err()
                                 {

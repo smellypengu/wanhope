@@ -1,15 +1,14 @@
-use std::{collections::HashMap, f32::consts::PI, ffi::CString, io, rc::Rc, time::Instant};
+use std::{collections::HashMap, f32::consts::PI, ffi::CString, rc::Rc, time::Instant};
 
 use glam::{Vec3Swizzles, Vec4Swizzles};
-use rand::Rng;
 
 use crate::{
+    egui::{ui, EGui},
     game_object::{GameObject, TransformComponent},
     graphics::{
         systems::{PointLightSystem, SimpleRenderSystem},
         vulkan::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-            egui::EGuiIntegration,
             Buffer, Device, Model, RenderError, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
         },
         Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
@@ -24,7 +23,7 @@ pub struct App {
 
     renderer: Renderer,
 
-    egui_integration: EGuiIntegration,
+    egui: EGui,
 
     global_pool: Rc<DescriptorPool>,
     global_set_layout: Rc<DescriptorSetLayout>,
@@ -47,9 +46,6 @@ pub struct App {
     network: Network,
 
     world: Option<common::world::World>,
-
-    text: String,
-    messages: Vec<String>,
 }
 
 impl App {
@@ -67,12 +63,7 @@ impl App {
 
         let renderer = Renderer::new(device.clone(), &window)?;
 
-        let egui_integration = EGuiIntegration::new(
-            &window,
-            device.clone(),
-            &renderer.swapchain,
-            renderer.swapchain.swapchain_image_format,
-        )?;
+        let egui = EGui::new(&window, &renderer)?;
 
         let global_pool = unsafe {
             DescriptorPool::new(device.clone())
@@ -149,7 +140,7 @@ impl App {
 
             renderer,
 
-            egui_integration,
+            egui,
 
             global_pool,
             global_set_layout,
@@ -172,9 +163,6 @@ impl App {
             network: Network::new(),
 
             world: None,
-
-            text: "".to_string(),
-            messages: Vec::new(),
         })
     }
 
@@ -193,7 +181,7 @@ impl App {
             match event {
                 winit::event::Event::WindowEvent { event, .. } => {
                     input.update(&event);
-                    app.egui_integration.on_event(&event);
+                    app.egui.on_event(&event);
 
                     match event {
                         winit::event::WindowEvent::CloseRequested => {
@@ -266,7 +254,9 @@ impl App {
                         .trim_matches(char::from(0))
                         .to_string();
 
-                    self.messages.push(message);
+                    if let Some(chat) = self.egui.get_mut::<ui::Chat>("Chat") {
+                        chat.messages.push(message);
+                    }
                 }
                 common::ServerPacket::GameState => {
                     let world: common::world::World =
@@ -395,85 +385,13 @@ impl App {
                 self.renderer.end_swapchain_render_pass(command_buffer);
 
                 // egui
-                self.egui_integration.begin_frame(&self.window);
-
-                egui::TopBottomPanel::top("top_panel").show(
-                    &self.egui_integration.egui_ctx.clone(),
-                    |ui| {
-                        egui::menu::bar(ui, |ui| {
-                            ui.menu_button("File", |ui| if ui.button("Test").clicked() {});
-                        });
-                    },
-                );
-
-                egui::SidePanel::left("side_panel").show(
-                    &self.egui_integration.egui_ctx.clone(),
-                    |ui| {
-                        ui.heading("Wanhope");
-                        ui.separator();
-
-                        if self.network.client_id.is_none() {
-                            ui.horizontal(|ui| {
-                                ui.label("Username: ");
-                                ui.text_edit_singleline(&mut self.network.username);
-                            });
-
-                            if ui.button("Connect").clicked() {
-                                match self.network.join() {
-                                    Err(err) => {
-                                        ui.label(format!("Failed to join server: {}", err));
-                                    }
-                                    _ => {}
-                                }
-                            };
-                        } else {
-                            ui.label(format!(
-                                "Connected to {} as {}",
-                                self.network.server_ip().unwrap(),
-                                self.network.client_id.unwrap(),
-                            ));
-
-                            ui.label("Players:");
-                            if let Some(world) = &self.world {
-                                for player in &world.players {
-                                    if let Some(player) = player {
-                                        ui.label(format!("{}", player.username));
-                                    }
-                                }
-                            }
-                        }
-
-                        ui.separator();
-                    },
-                );
-
-                egui::Window::new("Chat").resizable(false).show(
-                    &self.egui_integration.egui_ctx.clone(),
-                    |ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false, false])
-                            .max_height(200.0)
-                            .stick_to_bottom()
-                            .show(ui, |ui| {
-                                for message in &self.messages {
-                                    ui.label(message);
-                                }
-                            });
-
-                        ui.horizontal(|ui| {
-                            ui.text_edit_singleline(&mut self.text);
-                            if ui.button("Send").clicked() {
-                                self.network.send_chat_message(&self.text).unwrap(); // TODO: fix unwrap?
-                                self.text = "".to_string();
-                            };
-                        });
-                    },
-                );
-
-                self.egui_integration.end_frame(&mut self.window);
-
-                self.egui_integration
-                    .paint(command_buffer, self.renderer.image_index())?;
+                self.egui.render(
+                    &self.window,
+                    &self.renderer,
+                    command_buffer,
+                    &mut self.network,
+                    &self.world,
+                )?;
 
                 self.renderer.end_frame()?;
             }
@@ -486,11 +404,7 @@ impl App {
     pub fn resize(&mut self) -> anyhow::Result<(), AppError> {
         self.renderer.recreate_swapchain(&self.window)?;
 
-        self.egui_integration.update_swapchain(
-            &self.window,
-            &self.renderer.swapchain,
-            self.renderer.swapchain.swapchain_image_format,
-        )?;
+        self.egui.resize(&self.window, &self.renderer)?;
 
         Ok(())
     }

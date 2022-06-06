@@ -75,10 +75,13 @@ impl Network {
         Ok(())
     }
 
-    pub fn leave(&self) -> anyhow::Result<(), NetworkError> {
+    pub fn leave(&mut self) -> anyhow::Result<(), NetworkError> {
         match &self.socket {
             Some(socket) => {
                 socket.send(&[common::ClientPacket::Leave as u8, self.client_id.unwrap()])?;
+
+                self.socket = None;
+                self.client_id = None;
             }
             None => {}
         }
@@ -121,7 +124,7 @@ impl Network {
             None => {}
         }
 
-        Ok((None, vec![]))
+        Ok((None, Vec::new()))
     }
 
     pub fn send_chat_message(&self, message: &String) -> anyhow::Result<(), NetworkError> {
