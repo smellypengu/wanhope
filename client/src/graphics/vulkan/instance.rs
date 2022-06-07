@@ -37,8 +37,11 @@ pub struct Instance {
 }
 
 impl Instance {
-    pub fn new(app_name: CString, engine_name: CString) -> anyhow::Result<Self, RenderError> {
-        let entry = unsafe { ash::Entry::load()? };
+    pub unsafe fn new(
+        app_name: CString,
+        engine_name: CString,
+    ) -> anyhow::Result<Self, RenderError> {
+        let entry = ash::Entry::load()?;
 
         let app_info = ash::vk::ApplicationInfo::builder()
             .application_name(app_name.as_c_str())
@@ -63,7 +66,7 @@ impl Instance {
             }
         }
 
-        let instance = unsafe { entry.create_instance(&create_info, None)? };
+        let instance = entry.create_instance(&create_info, None)?;
 
         let debug_messenger = if ENABLE_VALIDATION_LAYERS {
             Some(Self::setup_debug_messenger(&entry, &instance)?)
@@ -78,7 +81,7 @@ impl Instance {
         })
     }
 
-    fn setup_debug_messenger(
+    unsafe fn setup_debug_messenger(
         entry: &ash::Entry,
         instance: &ash::Instance,
     ) -> anyhow::Result<
@@ -103,12 +106,12 @@ impl Instance {
         let debug_report = ash::extensions::ext::DebugUtils::new(entry, instance);
 
         let debug_report_callback =
-            unsafe { debug_report.create_debug_utils_messenger(&create_info, None)? };
+            debug_report.create_debug_utils_messenger(&create_info, None)?;
 
         Ok((debug_report, debug_report_callback))
     }
 
-    fn check_validation_layer_support(entry: &ash::Entry) -> anyhow::Result<bool, RenderError> {
+    unsafe fn check_validation_layer_support(entry: &ash::Entry) -> anyhow::Result<bool, RenderError> {
         let layer_properties = entry.enumerate_instance_layer_properties()?;
 
         if layer_properties.len() <= 0 {
@@ -119,7 +122,7 @@ impl Instance {
             log::debug!("Instance available layers: ");
 
             for layer in layer_properties.iter() {
-                let layer_name = unsafe { CStr::from_ptr(layer.layer_name.as_ptr()) };
+                let layer_name = CStr::from_ptr(layer.layer_name.as_ptr());
 
                 let layer_name = layer_name.to_str().unwrap();
 
@@ -131,7 +134,7 @@ impl Instance {
             let mut found = false;
 
             for layer_property in layer_properties.iter() {
-                let layer_name = unsafe { CStr::from_ptr(layer_property.layer_name.as_ptr()) };
+                let layer_name = CStr::from_ptr(layer_property.layer_name.as_ptr());
 
                 let layer_name = layer_name.to_str().unwrap();
 

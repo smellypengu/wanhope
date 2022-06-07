@@ -20,7 +20,7 @@ impl<T> Buffer<T>
 where
     T: PartialEq,
 {
-    pub fn new(
+    pub unsafe fn new(
         device: Rc<Device>,
         size: usize,
         usage_flags: ash::vk::BufferUsageFlags,

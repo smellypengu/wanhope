@@ -65,11 +65,12 @@ impl Model {
         vertices: &Vec<Vertex>,
         indices: Option<&Vec<u32>>,
     ) -> anyhow::Result<Rc<Self>, RenderError> {
-        let (vertex_buffer, vertex_count) = Self::create_vertex_buffers(&device, vertices)?;
+        let (vertex_buffer, vertex_count) =
+            unsafe { Self::create_vertex_buffers(&device, vertices)? };
 
         match indices {
             Some(indices) => {
-                let indices = Self::create_index_buffers(&device, indices)?;
+                let indices = unsafe { Self::create_index_buffers(&device, indices)? };
 
                 return Ok(Rc::new(Self {
                     vertex_buffer,
@@ -160,7 +161,7 @@ impl Model {
         }
     }
 
-    fn create_vertex_buffers(
+    unsafe fn create_vertex_buffers(
         device: &Rc<Device>,
         vertices: &Vec<Vertex>,
     ) -> anyhow::Result<(Buffer<Vertex>, u32), RenderError> {
@@ -179,10 +180,8 @@ impl Model {
                 | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        unsafe {
-            staging_buffer.map(0)?;
-            staging_buffer.write_to_buffer(vertices);
-        }
+        staging_buffer.map(0)?;
+        staging_buffer.write_to_buffer(vertices);
 
         let vertex_buffer = Buffer::new(
             device.clone(),
@@ -196,7 +195,7 @@ impl Model {
         Ok((vertex_buffer, vertex_count as u32))
     }
 
-    fn create_index_buffers(
+    unsafe fn create_index_buffers(
         device: &Rc<Device>,
         indices: &Vec<u32>,
     ) -> anyhow::Result<(Buffer<u32>, u32), RenderError> {
@@ -212,10 +211,8 @@ impl Model {
                 | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
         )?;
 
-        unsafe {
-            staging_buffer.map(0)?;
-            staging_buffer.write_to_buffer(indices);
-        }
+        staging_buffer.map(0)?;
+        staging_buffer.write_to_buffer(indices);
 
         let index_buffer = Buffer::new(
             device.clone(),

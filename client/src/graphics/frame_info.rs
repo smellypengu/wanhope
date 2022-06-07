@@ -30,5 +30,6 @@ pub struct FrameInfo<'a> {
     pub command_buffer: ash::vk::CommandBuffer,
     pub camera: &'a Camera,
     pub global_descriptor_set: ash::vk::DescriptorSet,
+    pub image_descriptor_set: ash::vk::DescriptorSet,
     pub game_objects: &'a mut HashMap<u8, GameObject>,
 }

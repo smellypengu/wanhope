@@ -59,7 +59,7 @@ impl GameObject {
             },
         };
 
-        // perhaps get fix the unsafe
+        // perhaps fix the unsafe
         let id = unsafe { CURRENT_ID };
 
         unsafe {

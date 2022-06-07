@@ -26,7 +26,7 @@ pub struct Swapchain {
 }
 
 impl Swapchain {
-    pub fn new(
+    pub unsafe fn new(
         device: Rc<Device>,
         window_extent: ash::vk::Extent2D,
         old_swapchain: Option<ash::vk::SwapchainKHR>,
@@ -99,7 +99,7 @@ impl Swapchain {
         }
     }
 
-    pub fn find_depth_format(device: &Rc<Device>) -> ash::vk::Format {
+    pub unsafe fn find_depth_format(device: &Rc<Device>) -> ash::vk::Format {
         let candidates = vec![
             ash::vk::Format::D32_SFLOAT,
             ash::vk::Format::D32_SFLOAT_S8_UINT,
@@ -130,19 +130,17 @@ impl Swapchain {
         ))
     }
 
-    pub fn submit_command_buffers(
+    pub unsafe fn submit_command_buffers(
         &mut self,
         buffer: ash::vk::CommandBuffer,
         image_index: usize,
     ) -> anyhow::Result<bool, RenderError> {
         if self.images_in_flight[image_index] != ash::vk::Fence::null() {
-            unsafe {
-                self.device.logical_device.wait_for_fences(
-                    &[self.images_in_flight[image_index]],
-                    true,
-                    u64::MAX,
-                )?
-            }
+            self.device.logical_device.wait_for_fences(
+                &[self.images_in_flight[image_index]],
+                true,
+                u64::MAX,
+            )?
         }
 
         self.images_in_flight[image_index] = self.in_flight_fences[self.current_frame];
@@ -160,17 +158,15 @@ impl Swapchain {
             .signal_semaphores(&signal_semaphores)
             .build()];
 
-        unsafe {
-            self.device
-                .logical_device
-                .reset_fences(&[self.in_flight_fences[self.current_frame]])?;
+        self.device
+            .logical_device
+            .reset_fences(&[self.in_flight_fences[self.current_frame]])?;
 
-            self.device.logical_device.queue_submit(
-                self.device.graphics_queue,
-                submit_info,
-                self.in_flight_fences[self.current_frame],
-            )?;
-        };
+        self.device.logical_device.queue_submit(
+            self.device.graphics_queue,
+            submit_info,
+            self.in_flight_fences[self.current_frame],
+        )?;
 
         let swapchains = [self.swapchain_khr];
 
@@ -183,13 +179,12 @@ impl Swapchain {
 
         self.current_frame = (self.current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-        Ok(unsafe {
-            self.swapchain
-                .queue_present(self.device.present_queue, &present_info)?
-        })
+        Ok(self
+            .swapchain
+            .queue_present(self.device.present_queue, &present_info)?)
     }
 
-    fn create_swapchain(
+    unsafe fn create_swapchain(
         device: &Rc<Device>,
         window_extent: ash::vk::Extent2D,
         old_swapchain: ash::vk::SwapchainKHR,
@@ -252,9 +247,9 @@ impl Swapchain {
         let swapchain =
             ash::extensions::khr::Swapchain::new(&device.instance.inner(), &device.logical_device);
 
-        let swapchain_khr = unsafe { swapchain.create_swapchain(&create_info, None)? };
+        let swapchain_khr = swapchain.create_swapchain(&create_info, None)?;
 
-        let swapchain_images = unsafe { swapchain.get_swapchain_images(swapchain_khr)? };
+        let swapchain_images = swapchain.get_swapchain_images(swapchain_khr)?;
 
         let swapchain_image_format = surface_format.format;
 
@@ -288,7 +283,7 @@ impl Swapchain {
             .collect::<Vec<_>>()
     }
 
-    fn create_depth_resources(
+    unsafe fn create_depth_resources(
         device: Rc<Device>,
         swapchain_images: &Vec<ash::vk::Image>,
         swapchain_extent: ash::vk::Extent2D,
@@ -320,8 +315,7 @@ impl Swapchain {
                         .initial_layout(ash::vk::ImageLayout::UNDEFINED)
                         .usage(ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
                         .samples(ash::vk::SampleCountFlags::TYPE_1)
-                        .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-                        .flags(ash::vk::ImageCreateFlags::empty());
+                        .sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
 
                     device
                         .create_image_with_info(
@@ -348,65 +342,63 @@ impl Swapchain {
         (images, image_memories, image_views, depth_format)
     }
 
-    fn create_render_pass(
+    unsafe fn create_render_pass(
         device: &Rc<Device>,
         swapchain_image_format: ash::vk::Format,
     ) -> anyhow::Result<ash::vk::RenderPass, RenderError> {
-        Ok(unsafe {
-            device.logical_device.create_render_pass(
-                &ash::vk::RenderPassCreateInfo::builder()
-                    .attachments(&[
-                        ash::vk::AttachmentDescription {
-                            format: swapchain_image_format,
-                            samples: ash::vk::SampleCountFlags::TYPE_1,
-                            load_op: ash::vk::AttachmentLoadOp::CLEAR,
-                            store_op: ash::vk::AttachmentStoreOp::STORE,
-                            stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
-                            stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                            initial_layout: ash::vk::ImageLayout::UNDEFINED,
-                            final_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                            ..Default::default()
-                        },
-                        ash::vk::AttachmentDescription {
-                            format: Self::find_depth_format(device),
-                            samples: ash::vk::SampleCountFlags::TYPE_1,
-                            load_op: ash::vk::AttachmentLoadOp::CLEAR,
-                            store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                            stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
-                            stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                            initial_layout: ash::vk::ImageLayout::UNDEFINED,
-                            final_layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                            ..Default::default()
-                        },
-                    ])
-                    .subpasses(&[ash::vk::SubpassDescription::builder()
-                        .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
-                        .color_attachments(&[ash::vk::AttachmentReference {
-                            attachment: 0,
-                            layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        }])
-                        .depth_stencil_attachment(&ash::vk::AttachmentReference {
-                            attachment: 1,
-                            layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                        })
-                        .build()])
-                    .dependencies(&[ash::vk::SubpassDependency {
-                        src_subpass: ash::vk::SUBPASS_EXTERNAL,
-                        dst_subpass: 0,
-                        src_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                            | ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                        dst_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-                            | ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
-                        dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE
-                            | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+        Ok(device.logical_device.create_render_pass(
+            &ash::vk::RenderPassCreateInfo::builder()
+                .attachments(&[
+                    ash::vk::AttachmentDescription {
+                        format: swapchain_image_format,
+                        samples: ash::vk::SampleCountFlags::TYPE_1,
+                        load_op: ash::vk::AttachmentLoadOp::CLEAR,
+                        store_op: ash::vk::AttachmentStoreOp::STORE,
+                        stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
+                        stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                        initial_layout: ash::vk::ImageLayout::UNDEFINED,
+                        final_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                         ..Default::default()
-                    }]),
-                None,
-            )?
-        })
+                    },
+                    ash::vk::AttachmentDescription {
+                        format: Self::find_depth_format(device),
+                        samples: ash::vk::SampleCountFlags::TYPE_1,
+                        load_op: ash::vk::AttachmentLoadOp::CLEAR,
+                        store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                        stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
+                        stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                        initial_layout: ash::vk::ImageLayout::UNDEFINED,
+                        final_layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                        ..Default::default()
+                    },
+                ])
+                .subpasses(&[ash::vk::SubpassDescription::builder()
+                    .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
+                    .color_attachments(&[ash::vk::AttachmentReference {
+                        attachment: 0,
+                        layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    }])
+                    .depth_stencil_attachment(&ash::vk::AttachmentReference {
+                        attachment: 1,
+                        layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                    })
+                    .build()])
+                .dependencies(&[ash::vk::SubpassDependency {
+                    src_subpass: ash::vk::SUBPASS_EXTERNAL,
+                    dst_subpass: 0,
+                    src_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                        | ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                    dst_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
+                        | ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS,
+                    dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE
+                        | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+                    ..Default::default()
+                }]),
+            None,
+        )?)
     }
 
-    fn create_framebuffers(
+    unsafe fn create_framebuffers(
         logical_device: &ash::Device,
         swapchain_extent: ash::vk::Extent2D,
         swapchain_image_views: &Vec<Rc<ImageView>>,
@@ -416,7 +408,7 @@ impl Swapchain {
         swapchain_image_views
             .iter()
             .zip(depth_image_views)
-            .map(|view| [view.0.view, view.1.view])
+            .map(|view| [view.0.inner(), view.1.inner()])
             .map(|attachments| {
                 let framebuffer_info = ash::vk::FramebufferCreateInfo::builder()
                     .render_pass(render_pass)
@@ -425,17 +417,15 @@ impl Swapchain {
                     .height(swapchain_extent.height)
                     .layers(1);
 
-                unsafe {
-                    logical_device
-                        .create_framebuffer(&framebuffer_info, None)
-                        .map_err(|e| log::error!("Unable to create framebuffer: {}", e))
-                        .unwrap() // TODO: fix unwrap?
-                }
+                logical_device
+                    .create_framebuffer(&framebuffer_info, None)
+                    .map_err(|e| log::error!("Unable to create framebuffer: {}", e))
+                    .unwrap() // TODO: fix unwrap?
             })
             .collect::<Vec<_>>()
     }
 
-    fn create_sync_objects(
+    unsafe fn create_sync_objects(
         logical_device: &ash::Device,
         swapchain_images: &Vec<ash::vk::Image>,
     ) -> anyhow::Result<
@@ -457,15 +447,12 @@ impl Swapchain {
         let mut in_flight_fences = Vec::new();
 
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
-            unsafe {
-                image_available_semaphores
-                    .push(logical_device.create_semaphore(&semaphore_info, None)?);
+            image_available_semaphores
+                .push(logical_device.create_semaphore(&semaphore_info, None)?);
 
-                render_finished_semaphore
-                    .push(logical_device.create_semaphore(&semaphore_info, None)?);
+            render_finished_semaphore.push(logical_device.create_semaphore(&semaphore_info, None)?);
 
-                in_flight_fences.push(logical_device.create_fence(&fence_info, None)?);
-            }
+            in_flight_fences.push(logical_device.create_fence(&fence_info, None)?);
         }
 
         let images_in_flight = vec![ash::vk::Fence::null(); swapchain_images.len()];

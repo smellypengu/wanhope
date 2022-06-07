@@ -4,7 +4,7 @@ use super::{Device, RenderError};
 
 pub struct ImageView {
     device: Rc<Device>,
-    pub view: ash::vk::ImageView,
+    view: ash::vk::ImageView,
 }
 
 impl ImageView {
@@ -32,6 +32,10 @@ impl ImageView {
         };
 
         Ok(Rc::new(Self { device, view }))
+    }
+
+    pub fn inner(&self) -> ash::vk::ImageView {
+        self.view
     }
 }
 

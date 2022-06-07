@@ -162,7 +162,7 @@ impl PipelineBuilder {
         self
     }
 
-    pub fn build(
+    pub unsafe fn build(
         &self,
         device: Rc<Device>,
         vert_file_path: &str,
@@ -211,17 +211,15 @@ impl PipelineBuilder {
             .base_pipeline_index(-1)
             .base_pipeline_handle(ash::vk::Pipeline::null());
 
-        let graphics_pipeline = unsafe {
-            device
-                .logical_device
-                .create_graphics_pipelines(
-                    ash::vk::PipelineCache::null(),
-                    std::slice::from_ref(&pipeline_info),
-                    None,
-                )
-                .map_err(|e| log::error!("Unable to create graphics pipeline: {:?}", e))
-                .unwrap()[0] // fix unwrap?
-        };
+        let graphics_pipeline = device
+            .logical_device
+            .create_graphics_pipelines(
+                ash::vk::PipelineCache::null(),
+                std::slice::from_ref(&pipeline_info),
+                None,
+            )
+            .map_err(|e| log::error!("Unable to create graphics pipeline: {:?}", e))
+            .unwrap()[0]; // fix unwrap?
 
         Ok(Rc::new(Pipeline {
             device,

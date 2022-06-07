@@ -38,9 +38,11 @@ impl PointLightSystem {
         render_pass: &ash::vk::RenderPass,
         set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<Self, RenderError> {
-        let pipeline_layout = Self::create_pipeline_layout(&device.logical_device, set_layouts)?;
+        let pipeline_layout =
+            unsafe { Self::create_pipeline_layout(&device.logical_device, set_layouts)? };
 
-        let pipeline = Self::create_pipeline(device.clone(), render_pass, &pipeline_layout)?;
+        let pipeline =
+            unsafe { Self::create_pipeline(device.clone(), render_pass, &pipeline_layout)? };
 
         Ok(Self {
             device,
@@ -49,7 +51,7 @@ impl PointLightSystem {
         })
     }
 
-    fn create_pipeline(
+    unsafe fn create_pipeline(
         device: Rc<Device>,
         render_pass: &ash::vk::RenderPass,
         pipeline_layout: &ash::vk::PipelineLayout,
@@ -70,7 +72,7 @@ impl PointLightSystem {
         Ok(pipeline)
     }
 
-    fn create_pipeline_layout(
+    unsafe fn create_pipeline_layout(
         logical_device: &ash::Device,
         set_layouts: &[ash::vk::DescriptorSetLayout],
     ) -> anyhow::Result<ash::vk::PipelineLayout, RenderError> {
@@ -84,7 +86,7 @@ impl PointLightSystem {
             .set_layouts(set_layouts)
             .push_constant_ranges(&push_constant_range);
 
-        Ok(unsafe { logical_device.create_pipeline_layout(&pipeline_layout_info, None)? })
+        Ok(logical_device.create_pipeline_layout(&pipeline_layout_info, None)?)
     }
 
     pub fn update(&self, frame_info: &mut FrameInfo, ubo: &mut GlobalUbo) {
@@ -129,7 +131,7 @@ impl PointLightSystem {
         ubo.num_lights = light_index as u32;
     }
 
-    pub fn render(&self, frame_info: &mut FrameInfo) {
+    pub unsafe fn render(&self, frame_info: &mut FrameInfo) {
         let mut sorted = IndexMap::new();
 
         for kv in frame_info.game_objects.iter() {
@@ -148,51 +150,49 @@ impl PointLightSystem {
         sorted.sort_keys();
         sorted.reverse();
 
-        unsafe {
-            self.pipeline.bind(frame_info.command_buffer);
+        self.pipeline.bind(frame_info.command_buffer);
 
-            self.device.logical_device.cmd_bind_descriptor_sets(
+        self.device.logical_device.cmd_bind_descriptor_sets(
+            frame_info.command_buffer,
+            ash::vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline_layout,
+            0,
+            &[frame_info.global_descriptor_set],
+            &[],
+        );
+
+        for kv in sorted.iter() {
+            let obj = &frame_info.game_objects[kv.1];
+
+            let push = PointLightPushConstants {
+                position: glam::vec4(
+                    obj.transform.translation.x,
+                    obj.transform.translation.y,
+                    obj.transform.translation.z,
+                    1.0,
+                ),
+                color: glam::vec4(
+                    obj.color.x,
+                    obj.color.y,
+                    obj.color.z,
+                    obj.point_light.as_ref().unwrap().light_intensity,
+                ),
+                radius: obj.transform.scale.x,
+            };
+
+            let push_ptr = push.as_bytes();
+
+            self.device.logical_device.cmd_push_constants(
                 frame_info.command_buffer,
-                ash::vk::PipelineBindPoint::GRAPHICS,
                 self.pipeline_layout,
+                ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
                 0,
-                &[frame_info.global_descriptor_set],
-                &[],
+                push_ptr,
             );
 
-            for kv in sorted.iter() {
-                let obj = &frame_info.game_objects[kv.1];
-
-                let push = PointLightPushConstants {
-                    position: glam::vec4(
-                        obj.transform.translation.x,
-                        obj.transform.translation.y,
-                        obj.transform.translation.z,
-                        1.0,
-                    ),
-                    color: glam::vec4(
-                        obj.color.x,
-                        obj.color.y,
-                        obj.color.z,
-                        obj.point_light.as_ref().unwrap().light_intensity,
-                    ),
-                    radius: obj.transform.scale.x,
-                };
-
-                let push_ptr = push.as_bytes();
-
-                self.device.logical_device.cmd_push_constants(
-                    frame_info.command_buffer,
-                    self.pipeline_layout,
-                    ash::vk::ShaderStageFlags::VERTEX | ash::vk::ShaderStageFlags::FRAGMENT,
-                    0,
-                    push_ptr,
-                );
-
-                self.device
-                    .logical_device
-                    .cmd_draw(frame_info.command_buffer, 6, 1, 0, 0)
-            }
+            self.device
+                .logical_device
+                .cmd_draw(frame_info.command_buffer, 6, 1, 0, 0)
         }
     }
 }

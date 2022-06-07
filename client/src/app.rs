@@ -9,7 +9,7 @@ use crate::{
         systems::{PointLightSystem, SimpleRenderSystem},
         vulkan::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-            Buffer, Device, Model, RenderError, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
+            Buffer, Device, Image, Model, RenderError, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
         },
         Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
     },
@@ -27,10 +27,13 @@ pub struct App {
 
     global_pool: Rc<DescriptorPool>,
     global_set_layout: Rc<DescriptorSetLayout>,
+    global_descriptor_sets: Vec<ash::vk::DescriptorSet>,
 
     ubo_buffers: Vec<Buffer<GlobalUbo>>,
 
-    global_descriptor_sets: Vec<ash::vk::DescriptorSet>,
+    image_set_layout: Rc<DescriptorSetLayout>,
+    image_descriptor_set: ash::vk::DescriptorSet,
+    image: Rc<Image>,
 
     simple_render_system: SimpleRenderSystem,
     point_light_system: PointLightSystem,
@@ -55,11 +58,13 @@ impl App {
         // window.set_cursor_icon(winit::window::CursorIcon::Grab);
         // window.set_cursor_position(glam::Vec2::new(200.0, 200.0));
 
-        let device = Device::new(
-            CString::new("wanhope").unwrap(),
-            CString::new("wanhope").unwrap(),
-            window.inner(),
-        )?;
+        let device = unsafe {
+            Device::new(
+                CString::new("wanhope").unwrap(),
+                CString::new("wanhope").unwrap(),
+                window.inner(),
+            )?
+        };
 
         let renderer = Renderer::new(device.clone(), &window)?;
 
@@ -67,9 +72,17 @@ impl App {
 
         let global_pool = unsafe {
             DescriptorPool::new(device.clone())
-                .max_sets(MAX_FRAMES_IN_FLIGHT as u32)
+                .max_sets(1000 as u32)
                 .pool_size(
                     ash::vk::DescriptorType::UNIFORM_BUFFER,
+                    MAX_FRAMES_IN_FLIGHT as u32,
+                )
+                .pool_size(
+                    ash::vk::DescriptorType::SAMPLED_IMAGE,
+                    MAX_FRAMES_IN_FLIGHT as u32,
+                )
+                .pool_size(
+                    ash::vk::DescriptorType::STORAGE_BUFFER,
                     MAX_FRAMES_IN_FLIGHT as u32,
                 )
                 .build()?
@@ -88,12 +101,14 @@ impl App {
 
         let mut ubo_buffers = Vec::with_capacity(MAX_FRAMES_IN_FLIGHT);
         for _ in 0..MAX_FRAMES_IN_FLIGHT {
-            let mut buffer = Buffer::new(
-                renderer.device.clone(),
-                1,
-                ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
-                ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-            )?;
+            let mut buffer = unsafe {
+                Buffer::new(
+                    renderer.device.clone(),
+                    1,
+                    ash::vk::BufferUsageFlags::UNIFORM_BUFFER,
+                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
+                )?
+            };
 
             unsafe {
                 buffer.map(0)?;
@@ -115,6 +130,26 @@ impl App {
             global_descriptor_sets.push(set);
         }
 
+        let image_set_layout = unsafe {
+            DescriptorSetLayout::new(device.clone())
+                .add_binding(
+                    0,
+                    ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+                    ash::vk::ShaderStageFlags::ALL_GRAPHICS,
+                    1,
+                )
+                .build()?
+        };
+
+        let image = Image::from_file(device.clone(), "client/textures/texture.jpg")?; // needs fixing for release mode
+
+        let image_descriptor_set = unsafe {
+            DescriptorSetWriter::new(image_set_layout.clone(), global_pool.clone())
+                .write_image(0, &[image.image_info])
+                .build()
+                .unwrap()
+        };
+
         let camera_controller = KeyboardMovementController::new(None, None);
 
         let mut viewer_object = GameObject::new(None, None, None);
@@ -125,7 +160,7 @@ impl App {
         let simple_render_system = SimpleRenderSystem::new(
             device.clone(),
             &renderer.swapchain.render_pass,
-            &[global_set_layout.inner()],
+            &[global_set_layout.inner(), image_set_layout.inner()],
         )?;
 
         let point_light_system = PointLightSystem::new(
@@ -144,10 +179,13 @@ impl App {
 
             global_pool,
             global_set_layout,
+            global_descriptor_sets,
+
+            image_set_layout,
+            image_descriptor_set,
+            image,
 
             ubo_buffers,
-
-            global_descriptor_sets,
 
             simple_render_system,
             point_light_system,
@@ -339,7 +377,7 @@ impl App {
             return Ok(());
         }
 
-        match self.renderer.begin_frame(&self.window)? {
+        match unsafe { self.renderer.begin_frame(&self.window)? } {
             Some(command_buffer) => {
                 let frame_index = self.renderer.frame_index();
 
@@ -349,6 +387,7 @@ impl App {
                     command_buffer,
                     camera: self.camera.as_ref().unwrap(),
                     global_descriptor_set: self.global_descriptor_sets[frame_index],
+                    image_descriptor_set: self.image_descriptor_set,
                     game_objects: &mut self.game_objects,
                 };
 
@@ -371,29 +410,27 @@ impl App {
                 unsafe {
                     self.ubo_buffers[frame_index].write_to_buffer(&[ubo]);
                     self.ubo_buffers[frame_index].flush()?;
+
+                    // render
+                    self.renderer.begin_swapchain_render_pass(command_buffer);
+
+                    // order here matters
+                    self.simple_render_system
+                        .render_game_objects(&mut frame_info);
+                    self.point_light_system.render(&mut frame_info);
+
+                    self.renderer.end_swapchain_render_pass(command_buffer);
+
+                    self.egui.render(
+                        &self.window,
+                        &self.renderer,
+                        command_buffer,
+                        &mut self.network,
+                        &self.world,
+                    )?;
+
+                    self.renderer.end_frame()?;
                 }
-
-                // render
-
-                self.renderer.begin_swapchain_render_pass(command_buffer);
-
-                // order here matters
-                self.simple_render_system
-                    .render_game_objects(&mut frame_info);
-                self.point_light_system.render(&mut frame_info);
-
-                self.renderer.end_swapchain_render_pass(command_buffer);
-
-                // egui
-                self.egui.render(
-                    &self.window,
-                    &self.renderer,
-                    command_buffer,
-                    &mut self.network,
-                    &self.world,
-                )?;
-
-                self.renderer.end_frame()?;
             }
             None => {}
         }
@@ -402,9 +439,11 @@ impl App {
     }
 
     pub fn resize(&mut self) -> anyhow::Result<(), AppError> {
-        self.renderer.recreate_swapchain(&self.window)?;
+        unsafe {
+            self.renderer.recreate_swapchain(&self.window)?;
 
-        self.egui.resize(&self.window, &self.renderer)?;
+            self.egui.resize(&self.window, &self.renderer)?;
+        }
 
         Ok(())
     }

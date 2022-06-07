@@ -8,7 +8,7 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    pub fn new<P: AsRef<std::path::Path>>(
+    pub unsafe fn new<P: AsRef<std::path::Path>>(
         device: Rc<Device>,
         file_path: P,
     ) -> anyhow::Result<Rc<Self>, RenderError> {
@@ -16,11 +16,9 @@ impl ShaderModule {
 
         let create_info = ash::vk::ShaderModuleCreateInfo::builder().code(&code);
 
-        let module = unsafe {
-            device
-                .logical_device
-                .create_shader_module(&create_info, None)?
-        };
+        let module = device
+            .logical_device
+            .create_shader_module(&create_info, None)?;
 
         Ok(Rc::new(Self { device, module }))
     }

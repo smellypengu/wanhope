@@ -70,7 +70,7 @@ impl EGui {
         self.egui_integration.on_event(event)
     }
 
-    pub fn render(
+    pub unsafe fn render(
         &mut self,
         window: &Window,
         renderer: &Renderer,
@@ -177,7 +177,7 @@ impl EGui {
         Ok(())
     }
 
-    pub fn resize(
+    pub unsafe fn resize(
         &mut self,
         window: &Window,
         renderer: &Renderer,

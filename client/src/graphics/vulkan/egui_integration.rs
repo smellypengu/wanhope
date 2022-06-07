@@ -8,6 +8,8 @@ use crate::graphics::{
     Window,
 };
 
+use super::Image;
+
 pub struct EGuiIntegration {
     pub egui_ctx: egui::Context,
     pub egui_winit: egui_winit::State,
@@ -27,10 +29,7 @@ pub struct EGuiIntegration {
     framebuffers: Vec<ash::vk::Framebuffer>,
     vertex_buffers: Vec<Buffer<egui::epaint::Vertex>>,
     index_buffers: Vec<Buffer<u32>>,
-    font_image_staging_buffer: Buffer<u8>,
-    font_image: (ash::vk::Image, ash::vk::DeviceMemory),
-    font_image_view: Option<Rc<ImageView>>,
-    font_image_size: [usize; 2],
+    font_image: Option<Rc<Image>>,
     font_descriptor_sets: Vec<ash::vk::DescriptorSet>,
 
     user_texture_layout: Rc<DescriptorSetLayout>,
@@ -76,7 +75,7 @@ impl EGuiIntegration {
             sets
         };
 
-        let render_pass = Self::create_render_pass(&device, surface_format)?;
+        let render_pass = unsafe { Self::create_render_pass(&device, surface_format)? };
 
         let pipeline_layout = unsafe {
             device.logical_device.create_pipeline_layout(
@@ -96,12 +95,14 @@ impl EGuiIntegration {
             )?
         };
 
-        let pipeline = Self::create_pipeline(
-            device.clone(),
-            &render_pass,
-            &pipeline_layout,
-            4 * std::mem::size_of::<f32>() as u32 + 4 * std::mem::size_of::<u8>() as u32,
-        )?;
+        let pipeline = unsafe {
+            Self::create_pipeline(
+                device.clone(),
+                &render_pass,
+                &pipeline_layout,
+                4 * std::mem::size_of::<f32>() as u32 + 4 * std::mem::size_of::<u8>() as u32,
+            )?
+        };
 
         let sampler = unsafe {
             device.logical_device.create_sampler(
@@ -119,33 +120,39 @@ impl EGuiIntegration {
             )?
         };
 
-        let (framebuffer_color_image_views, framebuffers) = Self::create_framebuffers(
-            device.clone(),
-            window,
-            swapchain,
-            render_pass,
-            surface_format,
-        );
+        let (framebuffer_color_image_views, framebuffers) = unsafe {
+            Self::create_framebuffers(
+                device.clone(),
+                window,
+                swapchain,
+                render_pass,
+                surface_format,
+            )
+        };
 
         let mut vertex_buffers = Vec::new();
         let mut index_buffers = Vec::new();
 
         for _ in 0..framebuffers.len() {
-            let mut vertex_buffer = Buffer::new(
-                device.clone(),
-                Self::vertex_buffer_size(),
-                ash::vk::BufferUsageFlags::VERTEX_BUFFER,
-                ash::vk::MemoryPropertyFlags::HOST_VISIBLE
-                    | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
-            )?;
+            let mut vertex_buffer = unsafe {
+                Buffer::new(
+                    device.clone(),
+                    Self::vertex_buffer_size(),
+                    ash::vk::BufferUsageFlags::VERTEX_BUFFER,
+                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                        | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+                )?
+            };
 
-            let mut index_buffer = Buffer::new(
-                device.clone(),
-                Self::index_buffer_size(),
-                ash::vk::BufferUsageFlags::INDEX_BUFFER,
-                ash::vk::MemoryPropertyFlags::HOST_VISIBLE
-                    | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
-            )?;
+            let mut index_buffer = unsafe {
+                Buffer::new(
+                    device.clone(),
+                    Self::index_buffer_size(),
+                    ash::vk::BufferUsageFlags::INDEX_BUFFER,
+                    ash::vk::MemoryPropertyFlags::HOST_VISIBLE
+                        | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
+                )?
+            };
 
             unsafe {
                 vertex_buffer.map(0)?;
@@ -166,14 +173,6 @@ impl EGuiIntegration {
                 )
                 .build()?
         };
-
-        let font_image_staging_buffer = Buffer::new(
-            device.clone(),
-            1,
-            ash::vk::BufferUsageFlags::TRANSFER_SRC,
-            ash::vk::MemoryPropertyFlags::HOST_VISIBLE
-                | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
-        )?; // Would like to not do it like this but that's for future me to fix.
 
         let user_textures = Vec::new();
 
@@ -199,10 +198,7 @@ impl EGuiIntegration {
             framebuffers,
             vertex_buffers,
             index_buffers,
-            font_image_staging_buffer,
-            font_image: Default::default(),
-            font_image_view: Default::default(),
-            font_image_size: [0; 2],
+            font_image: None,
             font_descriptor_sets: Vec::new(),
 
             user_texture_layout,
@@ -250,7 +246,7 @@ impl EGuiIntegration {
         self.textures_delta.append(full_output.textures_delta);
     }
 
-    pub fn paint(
+    pub unsafe fn paint(
         &mut self,
         command_buffer: ash::vk::CommandBuffer,
         swapchain_image_index: usize,
@@ -266,79 +262,70 @@ impl EGuiIntegration {
             .set
             .contains_key(&egui::TextureId::Managed(0))
         {
-            self.upload_font_texture(
-                command_buffer,
-                &textures_delta.set[&egui::TextureId::Managed(0)],
-            )?;
+            self.upload_font_texture(&textures_delta.set[&egui::TextureId::Managed(0)])?;
         }
 
         let mut vertex_buffer_ptr = self.vertex_buffers[index].mapped;
 
-        let vertex_buffer_ptr_end =
-            unsafe { vertex_buffer_ptr.add(Self::vertex_buffer_size() as usize) };
+        let vertex_buffer_ptr_end = vertex_buffer_ptr.add(Self::vertex_buffer_size() as usize);
 
         let mut index_buffer_ptr = self.index_buffers[index].mapped;
 
-        let index_buffer_ptr_end =
-            unsafe { index_buffer_ptr.add(Self::index_buffer_size() as usize) };
+        let index_buffer_ptr_end = index_buffer_ptr.add(Self::index_buffer_size() as usize);
 
-        unsafe {
-            self.device.logical_device.cmd_begin_render_pass(
-                command_buffer,
-                &ash::vk::RenderPassBeginInfo::builder()
-                    .render_pass(self.render_pass)
-                    .framebuffer(self.framebuffers[index])
-                    .clear_values(&[])
-                    .render_area(
-                        ash::vk::Rect2D::builder()
-                            .extent(ash::vk::Extent2D {
-                                width: self.physical_width,
-                                height: self.physical_height,
-                            })
-                            .build(),
-                    ),
-                ash::vk::SubpassContents::INLINE,
-            );
-        }
+        self.device.logical_device.cmd_begin_render_pass(
+            command_buffer,
+            &ash::vk::RenderPassBeginInfo::builder()
+                .render_pass(self.render_pass)
+                .framebuffer(self.framebuffers[index])
+                .clear_values(&[])
+                .render_area(
+                    ash::vk::Rect2D::builder()
+                        .extent(ash::vk::Extent2D {
+                            width: self.physical_width,
+                            height: self.physical_height,
+                        })
+                        .build(),
+                ),
+            ash::vk::SubpassContents::INLINE,
+        );
 
-        unsafe {
-            self.pipeline.bind(command_buffer);
+        self.pipeline.bind(command_buffer);
 
-            self.vertex_buffers[index].bind_vertex(command_buffer);
-            self.index_buffers[index].bind_index(command_buffer, ash::vk::IndexType::UINT32);
+        self.vertex_buffers[index].bind_vertex(command_buffer);
+        self.index_buffers[index].bind_index(command_buffer, ash::vk::IndexType::UINT32);
 
-            self.device.logical_device.cmd_set_viewport(
-                command_buffer,
-                0,
-                &[ash::vk::Viewport::builder()
-                    .x(0.0)
-                    .y(0.0)
-                    .width(self.physical_width as f32)
-                    .height(self.physical_height as f32)
-                    .min_depth(0.0)
-                    .max_depth(1.0)
-                    .build()],
-            );
+        self.device.logical_device.cmd_set_viewport(
+            command_buffer,
+            0,
+            &[ash::vk::Viewport::builder()
+                .x(0.0)
+                .y(0.0)
+                .width(self.physical_width as f32)
+                .height(self.physical_height as f32)
+                .min_depth(0.0)
+                .max_depth(1.0)
+                .build()],
+        );
 
-            let width_points = self.physical_width as f32 / self.scale_factor as f32;
-            let height_points = self.physical_height as f32 / self.scale_factor as f32;
+        let width_points = self.physical_width as f32 / self.scale_factor as f32;
+        let height_points = self.physical_height as f32 / self.scale_factor as f32;
 
-            self.device.logical_device.cmd_push_constants(
-                command_buffer,
-                self.pipeline_layout,
-                ash::vk::ShaderStageFlags::VERTEX,
-                0,
-                bytemuck::bytes_of(&width_points),
-            );
+        self.device.logical_device.cmd_push_constants(
+            command_buffer,
+            self.pipeline_layout,
+            ash::vk::ShaderStageFlags::VERTEX,
+            0,
+            bytemuck::bytes_of(&width_points),
+        );
 
-            self.device.logical_device.cmd_push_constants(
-                command_buffer,
-                self.pipeline_layout,
-                ash::vk::ShaderStageFlags::VERTEX,
-                std::mem::size_of_val(&width_points) as u32,
-                bytemuck::bytes_of(&height_points),
-            );
-        }
+        self.device.logical_device.cmd_push_constants(
+            command_buffer,
+            self.pipeline_layout,
+            ash::vk::ShaderStageFlags::VERTEX,
+            std::mem::size_of_val(&width_points) as u32,
+            bytemuck::bytes_of(&height_points),
+        );
 
         let mut vertex_base = 0;
         let mut index_base = 0;
@@ -351,34 +338,32 @@ impl EGuiIntegration {
                 }
             };
 
-            unsafe {
-                if let egui::TextureId::User(id) = mesh.texture_id {
-                    if let Some(descriptor_set) = self.user_textures[id as usize] {
-                        self.device.logical_device.cmd_bind_descriptor_sets(
-                            command_buffer,
-                            ash::vk::PipelineBindPoint::GRAPHICS,
-                            self.pipeline_layout,
-                            0,
-                            &[descriptor_set],
-                            &[],
-                        );
-                    } else {
-                        eprintln!(
-                            "This UserTexture has already been unregistered: {:?}",
-                            mesh.texture_id,
-                        );
-                        continue;
-                    }
-                } else {
+            if let egui::TextureId::User(id) = mesh.texture_id {
+                if let Some(descriptor_set) = self.user_textures[id as usize] {
                     self.device.logical_device.cmd_bind_descriptor_sets(
                         command_buffer,
                         ash::vk::PipelineBindPoint::GRAPHICS,
                         self.pipeline_layout,
                         0,
-                        &[self.font_descriptor_sets[index]],
+                        &[descriptor_set],
                         &[],
                     );
+                } else {
+                    eprintln!(
+                        "This UserTexture has already been unregistered: {:?}",
+                        mesh.texture_id,
+                    );
+                    continue;
                 }
+            } else {
+                self.device.logical_device.cmd_bind_descriptor_sets(
+                    command_buffer,
+                    ash::vk::PipelineBindPoint::GRAPHICS,
+                    self.pipeline_layout,
+                    0,
+                    &[self.font_descriptor_sets[index]],
+                    &[],
+                );
             }
 
             if mesh.vertices.is_empty() || mesh.indices.is_empty() {
@@ -396,9 +381,8 @@ impl EGuiIntegration {
             let i_size = std::mem::size_of_val(&i_slice[0]);
             let i_copy_size = i_slice.len() * i_size;
 
-            let vertex_buffer_ptr_next = unsafe { vertex_buffer_ptr.add(v_copy_size) };
-
-            let index_buffer_ptr_next = unsafe { index_buffer_ptr.add(i_copy_size) };
+            let vertex_buffer_ptr_next = vertex_buffer_ptr.add(v_copy_size);
+            let index_buffer_ptr_next = index_buffer_ptr.add(i_copy_size);
 
             if vertex_buffer_ptr_next >= vertex_buffer_ptr_end
                 || index_buffer_ptr_next >= index_buffer_ptr_end
@@ -407,78 +391,71 @@ impl EGuiIntegration {
             }
 
             // map memory
-            unsafe {
-                vertex_buffer_ptr.copy_from(v_slice.as_ptr() as *const c_void, v_copy_size);
-                index_buffer_ptr.copy_from(i_slice.as_ptr() as *const c_void, i_copy_size);
-            };
+            vertex_buffer_ptr.copy_from(v_slice.as_ptr() as *const c_void, v_copy_size);
+            index_buffer_ptr.copy_from(i_slice.as_ptr() as *const c_void, i_copy_size);
 
             vertex_buffer_ptr = vertex_buffer_ptr_next;
             index_buffer_ptr = index_buffer_ptr_next;
 
-            unsafe {
-                let min = cm.clip_rect.min;
-                let min = egui::Pos2 {
-                    x: min.x * self.scale_factor as f32,
-                    y: min.y * self.scale_factor as f32,
-                };
+            let min = cm.clip_rect.min;
+            let min = egui::Pos2 {
+                x: min.x * self.scale_factor as f32,
+                y: min.y * self.scale_factor as f32,
+            };
 
-                let min = egui::Pos2 {
-                    x: f32::clamp(min.x, 0.0, self.physical_width as f32),
-                    y: f32::clamp(min.y, 0.0, self.physical_height as f32),
-                };
+            let min = egui::Pos2 {
+                x: f32::clamp(min.x, 0.0, self.physical_width as f32),
+                y: f32::clamp(min.y, 0.0, self.physical_height as f32),
+            };
 
-                let max = cm.clip_rect.max;
-                let max = egui::Pos2 {
-                    x: max.x * self.scale_factor as f32,
-                    y: max.y * self.scale_factor as f32,
-                };
+            let max = cm.clip_rect.max;
+            let max = egui::Pos2 {
+                x: max.x * self.scale_factor as f32,
+                y: max.y * self.scale_factor as f32,
+            };
 
-                let max = egui::Pos2 {
-                    x: f32::clamp(max.x, min.x, self.physical_width as f32),
-                    y: f32::clamp(max.y, min.y, self.physical_height as f32),
-                };
+            let max = egui::Pos2 {
+                x: f32::clamp(max.x, min.x, self.physical_width as f32),
+                y: f32::clamp(max.y, min.y, self.physical_height as f32),
+            };
 
-                self.device.logical_device.cmd_set_scissor(
-                    command_buffer,
-                    0,
-                    &[ash::vk::Rect2D::builder()
-                        .offset(ash::vk::Offset2D {
-                            x: min.x.round() as i32,
-                            y: min.y.round() as i32,
-                        })
-                        .extent(ash::vk::Extent2D {
-                            width: (max.x.round() - min.x) as u32,
-                            height: (max.y.round() - min.y) as u32,
-                        })
-                        .build()],
-                );
+            self.device.logical_device.cmd_set_scissor(
+                command_buffer,
+                0,
+                &[ash::vk::Rect2D::builder()
+                    .offset(ash::vk::Offset2D {
+                        x: min.x.round() as i32,
+                        y: min.y.round() as i32,
+                    })
+                    .extent(ash::vk::Extent2D {
+                        width: (max.x.round() - min.x) as u32,
+                        height: (max.y.round() - min.y) as u32,
+                    })
+                    .build()],
+            );
 
-                self.device.logical_device.cmd_draw_indexed(
-                    command_buffer,
-                    mesh.indices.len() as u32,
-                    1,
-                    index_base,
-                    vertex_base,
-                    0,
-                );
-            }
+            self.device.logical_device.cmd_draw_indexed(
+                command_buffer,
+                mesh.indices.len() as u32,
+                1,
+                index_base,
+                vertex_base,
+                0,
+            );
 
             vertex_base += mesh.vertices.len() as i32;
             index_base += mesh.indices.len() as u32;
         }
 
-        unsafe {
-            self.device
-                .logical_device
-                .cmd_end_render_pass(command_buffer);
-        }
+        self.device
+            .logical_device
+            .cmd_end_render_pass(command_buffer);
 
         Ok(())
     }
 
-    fn upload_font_texture(
+    unsafe fn upload_font_texture(
         &mut self,
-        command_buffer: ash::vk::CommandBuffer,
         delta: &egui::epaint::ImageDelta,
     ) -> anyhow::Result<(), RenderError> {
         let pixels: Vec<(u8, u8, u8, u8)> = match &delta.image {
@@ -505,155 +482,33 @@ impl EGuiIntegration {
             .flat_map(|&r| vec![r.0, r.1, r.2, r.3])
             .collect::<Vec<u8>>();
 
-        unsafe {
-            if self.font_image_view.is_some() {
-                drop(self.font_image_view.as_ref().unwrap());
-            }
-
-            self.device
-                .logical_device
-                .destroy_image(self.font_image.0, None);
-            self.device
-                .logical_device
-                .free_memory(self.font_image.1, None);
+        if self.font_image.is_some() {
+            drop(self.font_image.as_ref());
         }
 
-        self.font_image_staging_buffer = Buffer::new(
+        self.font_image = Some(Image::from_raw(
             self.device.clone(),
-            (delta.image.width() * delta.image.height() * 4) as usize,
-            ash::vk::BufferUsageFlags::TRANSFER_SRC,
-            ash::vk::MemoryPropertyFlags::HOST_VISIBLE
-                | ash::vk::MemoryPropertyFlags::HOST_COHERENT,
-        )?;
-
-        self.font_image = {
-            self.device.create_image_with_info(
-                &ash::vk::ImageCreateInfo::builder()
-                    .format(ash::vk::Format::R8G8B8A8_UNORM)
-                    .initial_layout(ash::vk::ImageLayout::UNDEFINED)
-                    .samples(ash::vk::SampleCountFlags::TYPE_1)
-                    .tiling(ash::vk::ImageTiling::OPTIMAL)
-                    .usage(
-                        ash::vk::ImageUsageFlags::SAMPLED | ash::vk::ImageUsageFlags::TRANSFER_DST,
-                    )
-                    .sharing_mode(ash::vk::SharingMode::EXCLUSIVE)
-                    .image_type(ash::vk::ImageType::TYPE_2D)
-                    .mip_levels(1)
-                    .array_layers(1)
-                    .extent(ash::vk::Extent3D {
-                        width: delta.image.width() as u32,
-                        height: delta.image.height() as u32,
-                        depth: 1,
-                    }),
-                ash::vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            )?
-        };
-
-        self.font_image_view = Some(ImageView::new(
-            self.device.clone(),
-            self.font_image.0,
-            ash::vk::Format::R8G8B8A8_UNORM,
-            ash::vk::ImageAspectFlags::COLOR,
+            data,
+            delta.image.width() as u32,
+            delta.image.height() as u32,
+            self.sampler,
         )?);
-
-        self.font_image_size = delta.image.size();
 
         self.font_descriptor_sets.clear();
         for descriptor_layout in self.descriptor_set_layouts.iter_mut() {
-            let set = unsafe {
+            let set =
                 DescriptorSetWriter::new(descriptor_layout.clone(), self.descriptor_pool.clone())
-                    .write_image(
-                        0,
-                        &[ash::vk::DescriptorImageInfo::builder()
-                            .image_view(self.font_image_view.as_ref().unwrap().view)
-                            .image_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                            .sampler(self.sampler)
-                            .build()],
-                    )
+                    .write_image(0, &[self.font_image.as_ref().unwrap().image_info])
                     .build()
-                    .unwrap()
-            };
+                    .unwrap();
 
             self.font_descriptor_sets.push(set);
-        }
-
-        unsafe {
-            self.font_image_staging_buffer.map(0)?;
-            self.font_image_staging_buffer.write_to_buffer(&data);
-
-            self.device.logical_device.cmd_pipeline_barrier(
-                command_buffer,
-                ash::vk::PipelineStageFlags::HOST,
-                ash::vk::PipelineStageFlags::TRANSFER,
-                ash::vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[ash::vk::ImageMemoryBarrier::builder()
-                    .image(self.font_image.0)
-                    .subresource_range(ash::vk::ImageSubresourceRange {
-                        aspect_mask: ash::vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .src_access_mask(ash::vk::AccessFlags::default())
-                    .dst_access_mask(ash::vk::AccessFlags::TRANSFER_WRITE)
-                    .old_layout(ash::vk::ImageLayout::UNDEFINED)
-                    .new_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                    .build()],
-            );
-
-            self.device.logical_device.cmd_copy_buffer_to_image(
-                command_buffer,
-                self.font_image_staging_buffer.inner(),
-                self.font_image.0,
-                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[ash::vk::BufferImageCopy::builder()
-                    .image_subresource(
-                        ash::vk::ImageSubresourceLayers::builder()
-                            .aspect_mask(ash::vk::ImageAspectFlags::COLOR)
-                            .base_array_layer(0)
-                            .layer_count(1)
-                            .mip_level(0)
-                            .build(),
-                    )
-                    .image_extent(ash::vk::Extent3D {
-                        width: delta.image.width() as u32,
-                        height: delta.image.height() as u32,
-                        depth: 1,
-                    })
-                    .build()],
-            );
-
-            self.device.logical_device.cmd_pipeline_barrier(
-                command_buffer,
-                ash::vk::PipelineStageFlags::TRANSFER,
-                ash::vk::PipelineStageFlags::ALL_GRAPHICS,
-                ash::vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[ash::vk::ImageMemoryBarrier::builder()
-                    .image(self.font_image.0)
-                    .subresource_range(ash::vk::ImageSubresourceRange {
-                        aspect_mask: ash::vk::ImageAspectFlags::COLOR,
-                        base_mip_level: 0,
-                        level_count: 1,
-                        base_array_layer: 0,
-                        layer_count: 1,
-                    })
-                    .src_access_mask(ash::vk::AccessFlags::TRANSFER_WRITE)
-                    .dst_access_mask(ash::vk::AccessFlags::SHADER_READ)
-                    .old_layout(ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                    .new_layout(ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .build()],
-            );
         }
 
         Ok(())
     }
 
-    pub fn update_swapchain(
+    pub unsafe fn update_swapchain(
         &mut self,
         window: &Window,
         swapchain: &Swapchain,
@@ -662,19 +517,17 @@ impl EGuiIntegration {
         self.physical_width = window.inner().inner_size().width;
         self.physical_height = window.inner().inner_size().height;
 
-        unsafe {
-            self.device
-                .logical_device
-                .destroy_render_pass(self.render_pass, None);
+        self.device
+            .logical_device
+            .destroy_render_pass(self.render_pass, None);
 
-            self.framebuffer_color_image_views
-                .iter()
-                .for_each(|iv| drop(iv));
+        self.framebuffer_color_image_views
+            .iter()
+            .for_each(|iv| drop(iv));
 
-            self.framebuffers
-                .iter()
-                .for_each(|f| self.device.logical_device.destroy_framebuffer(*f, None));
-        }
+        self.framebuffers
+            .iter()
+            .for_each(|f| self.device.logical_device.destroy_framebuffer(*f, None));
 
         self.render_pass = Self::create_render_pass(&self.device, surface_format)?;
 
@@ -699,46 +552,44 @@ impl EGuiIntegration {
         Ok(())
     }
 
-    fn create_render_pass(
+    unsafe fn create_render_pass(
         device: &Rc<Device>,
         surface_format: ash::vk::Format,
     ) -> anyhow::Result<ash::vk::RenderPass, RenderError> {
-        Ok(unsafe {
-            device.logical_device.create_render_pass(
-                &ash::vk::RenderPassCreateInfo::builder()
-                    .attachments(&[ash::vk::AttachmentDescription {
-                        format: surface_format,
-                        samples: ash::vk::SampleCountFlags::TYPE_1,
-                        load_op: ash::vk::AttachmentLoadOp::LOAD,
-                        store_op: ash::vk::AttachmentStoreOp::STORE,
-                        stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
-                        stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
-                        initial_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        final_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
-                        ..Default::default()
+        Ok(device.logical_device.create_render_pass(
+            &ash::vk::RenderPassCreateInfo::builder()
+                .attachments(&[ash::vk::AttachmentDescription {
+                    format: surface_format,
+                    samples: ash::vk::SampleCountFlags::TYPE_1,
+                    load_op: ash::vk::AttachmentLoadOp::LOAD,
+                    store_op: ash::vk::AttachmentStoreOp::STORE,
+                    stencil_load_op: ash::vk::AttachmentLoadOp::DONT_CARE,
+                    stencil_store_op: ash::vk::AttachmentStoreOp::DONT_CARE,
+                    initial_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                    final_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
+                    ..Default::default()
+                }])
+                .subpasses(&[ash::vk::SubpassDescription::builder()
+                    .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
+                    .color_attachments(&[ash::vk::AttachmentReference {
+                        attachment: 0,
+                        layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
                     }])
-                    .subpasses(&[ash::vk::SubpassDescription::builder()
-                        .pipeline_bind_point(ash::vk::PipelineBindPoint::GRAPHICS)
-                        .color_attachments(&[ash::vk::AttachmentReference {
-                            attachment: 0,
-                            layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                        }])
-                        .build()])
-                    .dependencies(&[ash::vk::SubpassDependency {
-                        src_subpass: ash::vk::SUBPASS_EXTERNAL,
-                        dst_subpass: 0,
-                        src_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        dst_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                        src_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                        ..Default::default()
-                    }]),
-                None,
-            )?
-        })
+                    .build()])
+                .dependencies(&[ash::vk::SubpassDependency {
+                    src_subpass: ash::vk::SUBPASS_EXTERNAL,
+                    dst_subpass: 0,
+                    src_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                    dst_stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                    src_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    dst_access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+                    ..Default::default()
+                }]),
+            None,
+        )?)
     }
 
-    fn create_pipeline(
+    unsafe fn create_pipeline(
         device: Rc<Device>,
         render_pass: &ash::vk::RenderPass,
         pipeline_layout: &ash::vk::PipelineLayout,
@@ -780,7 +631,7 @@ impl EGuiIntegration {
             )?)
     }
 
-    fn create_framebuffers(
+    unsafe fn create_framebuffers(
         device: Rc<Device>,
         window: &Window,
         swapchain: &Swapchain,
@@ -805,8 +656,8 @@ impl EGuiIntegration {
 
         let framebuffers = framebuffer_color_image_views
             .iter()
-            .map(|image_view| image_view.view)
-            .map(|view| unsafe {
+            .map(|image_view| image_view.inner())
+            .map(|view| {
                 let attachments = &[view];
                 device
                     .logical_device
@@ -830,13 +681,6 @@ impl EGuiIntegration {
 impl Drop for EGuiIntegration {
     fn drop(&mut self) {
         unsafe {
-            self.device
-                .logical_device
-                .destroy_image(self.font_image.0, None);
-            self.device
-                .logical_device
-                .free_memory(self.font_image.1, None);
-
             self.framebuffers
                 .iter()
                 .for_each(|f| self.device.logical_device.destroy_framebuffer(*f, None));

@@ -17,10 +17,10 @@ impl Renderer {
     pub fn new(device: Rc<Device>, window: &Window) -> anyhow::Result<Self, RenderError> {
         let window_extent = Self::get_window_extent(window);
 
-        let swapchain = Swapchain::new(device.clone(), window_extent, None)?;
+        let swapchain = unsafe { Swapchain::new(device.clone(), window_extent, None)? };
 
         let command_buffers =
-            Self::create_command_buffers(&device.logical_device, device.command_pool)?;
+            unsafe { Self::create_command_buffers(&device.logical_device, device.command_pool)? };
 
         Ok(Self {
             device,
@@ -32,7 +32,7 @@ impl Renderer {
         })
     }
 
-    pub fn begin_frame(
+    pub unsafe fn begin_frame(
         &mut self,
         window: &Window,
     ) -> anyhow::Result<Option<ash::vk::CommandBuffer>, RenderError> {
@@ -41,7 +41,7 @@ impl Renderer {
             "Cannot call begin_frame while already in progress"
         );
 
-        let result = unsafe { self.swapchain.acquire_next_image()? };
+        let result = self.swapchain.acquire_next_image()?;
 
         match result {
             Err(ash::vk::Result::ERROR_OUT_OF_DATE_KHR) => {
@@ -71,16 +71,14 @@ impl Renderer {
 
         let begin_info = ash::vk::CommandBufferBeginInfo::builder();
 
-        unsafe {
-            self.device
-                .logical_device
-                .begin_command_buffer(command_buffer, &begin_info)?
-        };
+        self.device
+            .logical_device
+            .begin_command_buffer(command_buffer, &begin_info)?;
 
         Ok(Some(command_buffer))
     }
 
-    pub fn end_frame(&mut self) -> anyhow::Result<(), RenderError> {
+    pub unsafe fn end_frame(&mut self) -> anyhow::Result<(), RenderError> {
         assert!(
             self.is_frame_started,
             "Cannot call end_frame while frame is not in progress"
@@ -88,16 +86,14 @@ impl Renderer {
 
         let command_buffer = self.current_command_buffer();
 
-        unsafe {
-            self.device
-                .logical_device
-                .end_command_buffer(command_buffer)?
-        };
+        self.device
+            .logical_device
+            .end_command_buffer(command_buffer)?;
 
         self.swapchain
             .submit_command_buffers(command_buffer, self.current_image_index)?;
 
-        unsafe { self.device.logical_device.device_wait_idle()? };
+        self.device.logical_device.device_wait_idle()?;
 
         self.is_frame_started = false;
         self.current_frame_index = (self.current_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -105,7 +101,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn begin_swapchain_render_pass(&self, command_buffer: ash::vk::CommandBuffer) {
+    pub unsafe fn begin_swapchain_render_pass(&self, command_buffer: ash::vk::CommandBuffer) {
         assert!(
             self.is_frame_started,
             "Cannot call begin_swpachain_render_pass while frame is not in progress"
@@ -143,37 +139,35 @@ impl Renderer {
             .render_area(render_area)
             .clear_values(&clear_values);
 
-        unsafe {
-            self.device.logical_device.cmd_begin_render_pass(
-                command_buffer,
-                &render_pass_info,
-                ash::vk::SubpassContents::INLINE,
-            );
+        self.device.logical_device.cmd_begin_render_pass(
+            command_buffer,
+            &render_pass_info,
+            ash::vk::SubpassContents::INLINE,
+        );
 
-            let viewports = [ash::vk::Viewport {
-                x: 0.0,
-                y: 0.0,
-                width: self.swapchain.width() as f32,
-                height: self.swapchain.height() as f32,
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }];
+        let viewports = [ash::vk::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: self.swapchain.width() as f32,
+            height: self.swapchain.height() as f32,
+            min_depth: 0.0,
+            max_depth: 1.0,
+        }];
 
-            let scissors = [ash::vk::Rect2D {
-                offset: ash::vk::Offset2D { x: 0, y: 0 },
-                extent: self.swapchain.swapchain_extent,
-            }];
+        let scissors = [ash::vk::Rect2D {
+            offset: ash::vk::Offset2D { x: 0, y: 0 },
+            extent: self.swapchain.swapchain_extent,
+        }];
 
-            self.device
-                .logical_device
-                .cmd_set_viewport(command_buffer, 0, &viewports);
-            self.device
-                .logical_device
-                .cmd_set_scissor(command_buffer, 0, &scissors);
-        }
+        self.device
+            .logical_device
+            .cmd_set_viewport(command_buffer, 0, &viewports);
+        self.device
+            .logical_device
+            .cmd_set_scissor(command_buffer, 0, &scissors);
     }
 
-    pub fn end_swapchain_render_pass(&self, command_buffer: ash::vk::CommandBuffer) {
+    pub unsafe fn end_swapchain_render_pass(&self, command_buffer: ash::vk::CommandBuffer) {
         assert!(
             self.is_frame_started,
             "Cannot call end_swpachain_render_pass while frame is not in progress"
@@ -185,14 +179,15 @@ impl Renderer {
             "Cannot end render pass on a command buffer from a different frame"
         );
 
-        unsafe {
-            self.device
-                .logical_device
-                .cmd_end_render_pass(command_buffer);
-        }
+        self.device
+            .logical_device
+            .cmd_end_render_pass(command_buffer);
     }
 
-    pub fn recreate_swapchain(&mut self, window: &Window) -> anyhow::Result<(), RenderError> {
+    pub unsafe fn recreate_swapchain(
+        &mut self,
+        window: &Window,
+    ) -> anyhow::Result<(), RenderError> {
         let extent = Self::get_window_extent(window);
 
         if extent.width == 0 || extent.height == 0 {
@@ -201,7 +196,7 @@ impl Renderer {
 
         log::debug!("Recreating vulkan swapchain");
 
-        unsafe { self.device.logical_device.device_wait_idle()? };
+        self.device.logical_device.device_wait_idle()?;
 
         let new_swapchain = Swapchain::new(
             self.device.clone(),
@@ -225,7 +220,7 @@ impl Renderer {
         }
     }
 
-    fn create_command_buffers(
+    unsafe fn create_command_buffers(
         device: &ash::Device,
         command_pool: ash::vk::CommandPool,
     ) -> anyhow::Result<Vec<ash::vk::CommandBuffer>, RenderError> {
@@ -234,7 +229,7 @@ impl Renderer {
             .command_pool(command_pool)
             .command_buffer_count(MAX_FRAMES_IN_FLIGHT as u32);
 
-        let command_buffers = unsafe { device.allocate_command_buffers(&alloc_info)? };
+        let command_buffers = device.allocate_command_buffers(&alloc_info)?;
 
         Ok(command_buffers)
     }

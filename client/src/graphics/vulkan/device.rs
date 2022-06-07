@@ -37,7 +37,7 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn new(
+    pub unsafe fn new(
         app_name: CString,
         engine_name: CString,
         window: &winit::window::Window,
@@ -77,7 +77,9 @@ impl Device {
         }))
     }
 
-    pub fn get_swapchain_support(&self) -> anyhow::Result<SwapchainSupportDetails, RenderError> {
+    pub unsafe fn get_swapchain_support(
+        &self,
+    ) -> anyhow::Result<SwapchainSupportDetails, RenderError> {
         Ok(Self::query_swapchain_support(
             &self.surface,
             self.surface_khr,
@@ -85,16 +87,15 @@ impl Device {
         )?)
     }
 
-    pub fn find_memory_type(
+    pub unsafe fn find_memory_type(
         &self,
         type_filter: u32,
         properties: ash::vk::MemoryPropertyFlags,
     ) -> Option<(u32, bool)> {
-        let mem_properties = unsafe {
-            self.instance
-                .inner()
-                .get_physical_device_memory_properties(self.physical_device)
-        };
+        let mem_properties = self
+            .instance
+            .inner()
+            .get_physical_device_memory_properties(self.physical_device);
 
         let mut memory_type = None;
 
@@ -114,7 +115,9 @@ impl Device {
         memory_type
     }
 
-    pub fn find_physical_queue_families(&self) -> anyhow::Result<QueueFamilyIndices, RenderError> {
+    pub unsafe fn find_physical_queue_families(
+        &self,
+    ) -> anyhow::Result<QueueFamilyIndices, RenderError> {
         Ok(Self::find_queue_families(
             &self.instance,
             &self.surface,
@@ -123,7 +126,7 @@ impl Device {
         )?)
     }
 
-    pub fn find_supported_format(
+    pub unsafe fn find_supported_format(
         &self,
         candidates: &Vec<ash::vk::Format>,
         tiling: ash::vk::ImageTiling,
@@ -132,11 +135,10 @@ impl Device {
         *candidates
             .iter()
             .find(|format| {
-                let properties = unsafe {
-                    self.instance
-                        .inner()
-                        .get_physical_device_format_properties(self.physical_device, **format)
-                };
+                let properties = self
+                    .instance
+                    .inner()
+                    .get_physical_device_format_properties(self.physical_device, **format);
 
                 if tiling == ash::vk::ImageTiling::LINEAR {
                     return (properties.linear_tiling_features & features) == features;
@@ -149,7 +151,7 @@ impl Device {
             .expect("Failed to find supported format!")
     }
 
-    pub fn create_buffer(
+    pub unsafe fn create_buffer(
         &self,
         size: ash::vk::DeviceSize,
         usage: ash::vk::BufferUsageFlags,
@@ -160,10 +162,9 @@ impl Device {
             .usage(usage)
             .sharing_mode(ash::vk::SharingMode::EXCLUSIVE);
 
-        let buffer = unsafe { self.logical_device.create_buffer(&create_info, None)? };
+        let buffer = self.logical_device.create_buffer(&create_info, None)?;
 
-        let mem_requirements =
-            unsafe { self.logical_device.get_buffer_memory_requirements(buffer) };
+        let mem_requirements = self.logical_device.get_buffer_memory_requirements(buffer);
 
         let (memory_type, coherent) = self
             .find_memory_type(mem_requirements.memory_type_bits, properties)
@@ -173,17 +174,15 @@ impl Device {
             .allocation_size(mem_requirements.size)
             .memory_type_index(memory_type);
 
-        let buffer_memory = unsafe { self.logical_device.allocate_memory(&alloc_info, None)? };
+        let buffer_memory = self.logical_device.allocate_memory(&alloc_info, None)?;
 
-        unsafe {
-            self.logical_device
-                .bind_buffer_memory(buffer, buffer_memory, 0)?
-        };
+        self.logical_device
+            .bind_buffer_memory(buffer, buffer_memory, 0)?;
 
         Ok((buffer, buffer_memory, coherent))
     }
 
-    pub fn begin_single_time_commands(
+    pub unsafe fn begin_single_time_commands(
         &self,
     ) -> anyhow::Result<ash::vk::CommandBuffer, RenderError> {
         let alloc_info = ash::vk::CommandBufferAllocateInfo::builder()
@@ -191,46 +190,41 @@ impl Device {
             .command_pool(self.command_pool)
             .command_buffer_count(1);
 
-        let command_buffer =
-            unsafe { self.logical_device.allocate_command_buffers(&alloc_info)?[0] };
+        let command_buffer = self.logical_device.allocate_command_buffers(&alloc_info)?[0];
 
         let begin_info = ash::vk::CommandBufferBeginInfo::builder()
             .flags(ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
-        unsafe {
-            self.logical_device
-                .begin_command_buffer(command_buffer, &begin_info)?
-        };
+        self.logical_device
+            .begin_command_buffer(command_buffer, &begin_info)?;
 
         Ok(command_buffer)
     }
 
-    pub fn end_single_time_commands(
+    pub unsafe fn end_single_time_commands(
         &self,
         command_buffer: ash::vk::CommandBuffer,
     ) -> anyhow::Result<(), RenderError> {
-        unsafe {
-            self.logical_device.end_command_buffer(command_buffer)?;
+        self.logical_device.end_command_buffer(command_buffer)?;
 
-            let submit_info = ash::vk::SubmitInfo::builder()
-                .command_buffers(std::slice::from_ref(&command_buffer));
+        let submit_info =
+            ash::vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&command_buffer));
 
-            self.logical_device.queue_submit(
-                self.graphics_queue,
-                std::slice::from_ref(&submit_info),
-                ash::vk::Fence::null(),
-            )?;
+        self.logical_device.queue_submit(
+            self.graphics_queue,
+            std::slice::from_ref(&submit_info),
+            ash::vk::Fence::null(),
+        )?;
 
-            self.logical_device.queue_wait_idle(self.graphics_queue)?;
+        self.logical_device.queue_wait_idle(self.graphics_queue)?;
 
-            self.logical_device
-                .free_command_buffers(self.command_pool, &[command_buffer]);
-        }
+        self.logical_device
+            .free_command_buffers(self.command_pool, &[command_buffer]);
 
         Ok(())
     }
 
-    pub fn copy_buffer(
+    pub unsafe fn copy_buffer(
         &self,
         src_buffer: ash::vk::Buffer,
         dst_buffer: ash::vk::Buffer,
@@ -243,28 +237,71 @@ impl Device {
             .dst_offset(0)
             .size(size);
 
-        unsafe {
-            self.logical_device.cmd_copy_buffer(
-                command_buffer,
-                src_buffer,
-                dst_buffer,
-                std::slice::from_ref(&copy_region),
-            )
-        };
+        self.logical_device.cmd_copy_buffer(
+            command_buffer,
+            src_buffer,
+            dst_buffer,
+            std::slice::from_ref(&copy_region),
+        );
 
         self.end_single_time_commands(command_buffer)?;
 
         Ok(())
     }
 
-    pub fn create_image_with_info(
+    pub unsafe fn copy_buffer_to_image(
+        &self,
+        buffer: ash::vk::Buffer,
+        image: ash::vk::Image,
+        width: u32,
+        height: u32,
+        layer_count: u32,
+    ) -> anyhow::Result<(), RenderError> {
+        let command_buffer = self.begin_single_time_commands()?;
+
+        let image_subresource = ash::vk::ImageSubresourceLayers {
+            aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+            mip_level: 0,
+            base_array_layer: 0,
+            layer_count,
+        };
+
+        let image_offset = ash::vk::Offset3D { x: 0, y: 0, z: 0 };
+
+        let image_extent = ash::vk::Extent3D {
+            width,
+            height,
+            depth: 1,
+        };
+
+        let region = ash::vk::BufferImageCopy {
+            buffer_offset: 0,
+            buffer_row_length: 0,
+            buffer_image_height: 0,
+            image_subresource,
+            image_offset,
+            image_extent,
+        };
+
+        self.logical_device.cmd_copy_buffer_to_image(
+            command_buffer,
+            buffer,
+            image,
+            ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &[region],
+        );
+
+        self.end_single_time_commands(command_buffer)
+    }
+
+    pub unsafe fn create_image_with_info(
         &self,
         image_info: &ash::vk::ImageCreateInfo,
         properties: ash::vk::MemoryPropertyFlags,
     ) -> anyhow::Result<(ash::vk::Image, ash::vk::DeviceMemory), RenderError> {
-        let image = unsafe { self.logical_device.create_image(image_info, None)? };
+        let image = self.logical_device.create_image(image_info, None)?;
 
-        let mem_requirements = unsafe { self.logical_device.get_image_memory_requirements(image) };
+        let mem_requirements = self.logical_device.get_image_memory_requirements(image);
 
         let alloc_info = ash::vk::MemoryAllocateInfo::builder()
             .allocation_size(mem_requirements.size)
@@ -274,35 +311,33 @@ impl Device {
                     .0,
             );
 
-        let image_memory = unsafe { self.logical_device.allocate_memory(&alloc_info, None)? };
+        let image_memory = self.logical_device.allocate_memory(&alloc_info, None)?;
 
-        unsafe {
-            self.logical_device
-                .bind_image_memory(image, image_memory, 0)?
-        }
+        self.logical_device
+            .bind_image_memory(image, image_memory, 0)?;
 
         Ok((image, image_memory))
     }
 
-    fn create_surface(
+    unsafe fn create_surface(
         instance: &Instance,
         window: &winit::window::Window,
     ) -> anyhow::Result<(ash::extensions::khr::Surface, ash::vk::SurfaceKHR), RenderError> {
         let surface = ash::extensions::khr::Surface::new(&instance.entry, &instance.inner());
 
         let surface_khr =
-            unsafe { ash_window::create_surface(&instance.entry, instance.inner(), window, None)? };
+            ash_window::create_surface(&instance.entry, instance.inner(), window, None)?;
 
         Ok((surface, surface_khr))
     }
 
-    fn pick_physical_device(
+    unsafe fn pick_physical_device(
         instance: &Instance,
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
     ) -> anyhow::Result<(ash::vk::PhysicalDevice, ash::vk::PhysicalDeviceProperties), RenderError>
     {
-        let physical_devices = unsafe { instance.inner().enumerate_physical_devices()? };
+        let physical_devices = instance.inner().enumerate_physical_devices()?;
 
         log::debug!("Physical device count: {}", physical_devices.len());
 
@@ -314,20 +349,19 @@ impl Device {
             }) // TODO: fix unwrap?
             .expect("No suitable physical device found");
 
-        let physical_device_properties = unsafe {
-            instance
-                .inner()
-                .get_physical_device_properties(physical_device)
-        };
+        let physical_device_properties = instance
+            .inner()
+            .get_physical_device_properties(physical_device);
 
-        log::debug!("Selected physical device: {:?}", unsafe {
+        log::debug!(
+            "Selected physical device: {:?}",
             CStr::from_ptr(physical_device_properties.device_name.as_ptr())
-        });
+        );
 
         Ok((physical_device, physical_device_properties))
     }
 
-    fn is_physical_device_suitable(
+    unsafe fn is_physical_device_suitable(
         instance: &Instance,
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
@@ -350,11 +384,9 @@ impl Device {
             }
         }
 
-        let supported_features = unsafe {
-            instance
-                .inner()
-                .get_physical_device_features(physical_device)
-        };
+        let supported_features = instance
+            .inner()
+            .get_physical_device_features(physical_device);
 
         Ok({
             queue_indices.is_complete()
@@ -364,7 +396,7 @@ impl Device {
         })
     }
 
-    fn create_logical_device(
+    unsafe fn create_logical_device(
         instance: &Instance,
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
@@ -405,22 +437,18 @@ impl Device {
             create_info = create_info.enabled_layer_names(&layer_name_ptrs);
         }
 
-        let logical_device = unsafe {
-            instance
-                .inner()
-                .create_device(physical_device, &create_info, None)?
-        };
+        let logical_device = instance
+            .inner()
+            .create_device(physical_device, &create_info, None)?;
 
-        let graphics_queue =
-            unsafe { logical_device.get_device_queue(queue_indices.graphics_family, 0) };
+        let graphics_queue = logical_device.get_device_queue(queue_indices.graphics_family, 0);
 
-        let present_queue =
-            unsafe { logical_device.get_device_queue(queue_indices.present_family, 0) };
+        let present_queue = logical_device.get_device_queue(queue_indices.present_family, 0);
 
         Ok((logical_device, graphics_queue, present_queue))
     }
 
-    fn create_command_pool(
+    unsafe fn create_command_pool(
         instance: &Instance,
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
@@ -437,7 +465,7 @@ impl Device {
                     | ash::vk::CommandPoolCreateFlags::TRANSIENT,
             );
 
-        Ok(unsafe { logical_device.create_command_pool(&create_info, None)? })
+        Ok(logical_device.create_command_pool(&create_info, None)?)
     }
 
     fn get_device_extensions() -> ([&'static CStr; 1], Vec<*const i8>) {
@@ -451,21 +479,19 @@ impl Device {
         (device_extensions, ext_names_ptrs)
     }
 
-    fn check_physical_device_extension_support(
+    unsafe fn check_physical_device_extension_support(
         instance: &Instance,
         physical_device: ash::vk::PhysicalDevice,
     ) -> anyhow::Result<bool, RenderError> {
-        let available_extensions = unsafe {
-            instance
-                .inner()
-                .enumerate_device_extension_properties(physical_device)?
-        };
+        let available_extensions = instance
+            .inner()
+            .enumerate_device_extension_properties(physical_device)?;
 
         let (required_extensions, _) = Self::get_device_extensions();
 
         for extension in required_extensions.iter() {
             let found = available_extensions.iter().any(|ext| {
-                let name = unsafe { CStr::from_ptr(ext.extension_name.as_ptr()) };
+                let name = CStr::from_ptr(ext.extension_name.as_ptr());
 
                 extension == &name
             });
@@ -483,7 +509,7 @@ impl Device {
         Ok(true)
     }
 
-    fn find_queue_families(
+    unsafe fn find_queue_families(
         instance: &Instance,
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
@@ -494,11 +520,9 @@ impl Device {
         let mut graphics_family_has_value = false;
         let mut present_family_has_value = false;
 
-        let queue_families = unsafe {
-            instance
-                .inner()
-                .get_physical_device_queue_family_properties(physical_device)
-        };
+        let queue_families = instance
+            .inner()
+            .get_physical_device_queue_family_properties(physical_device);
 
         for (index, queue_family) in queue_families
             .iter()
@@ -515,9 +539,8 @@ impl Device {
                 graphics_family_has_value = true;
             }
 
-            let present_support = unsafe {
-                surface.get_physical_device_surface_support(physical_device, index, surface_khr)?
-            };
+            let present_support =
+                surface.get_physical_device_surface_support(physical_device, index, surface_khr)?;
 
             if present_support {
                 present_family = index;
@@ -537,21 +560,18 @@ impl Device {
         })
     }
 
-    fn query_swapchain_support(
+    unsafe fn query_swapchain_support(
         surface: &ash::extensions::khr::Surface,
         surface_khr: ash::vk::SurfaceKHR,
         physical_device: ash::vk::PhysicalDevice,
     ) -> anyhow::Result<SwapchainSupportDetails, RenderError> {
-        let capabilities = unsafe {
-            surface.get_physical_device_surface_capabilities(physical_device, surface_khr)?
-        };
+        let capabilities =
+            surface.get_physical_device_surface_capabilities(physical_device, surface_khr)?;
 
-        let formats =
-            unsafe { surface.get_physical_device_surface_formats(physical_device, surface_khr)? };
+        let formats = surface.get_physical_device_surface_formats(physical_device, surface_khr)?;
 
-        let present_modes = unsafe {
-            surface.get_physical_device_surface_present_modes(physical_device, surface_khr)?
-        };
+        let present_modes =
+            surface.get_physical_device_surface_present_modes(physical_device, surface_khr)?;
 
         Ok(SwapchainSupportDetails {
             capabilities,

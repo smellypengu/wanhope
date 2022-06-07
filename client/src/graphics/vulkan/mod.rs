@@ -2,6 +2,7 @@ mod buffer;
 pub mod descriptor_set;
 mod device;
 mod egui_integration;
+mod image;
 mod image_view;
 mod instance;
 mod model;
@@ -10,6 +11,7 @@ mod renderer;
 mod shader;
 mod swapchain;
 
+pub use self::image::*;
 pub use buffer::*;
 pub use device::*;
 pub use egui_integration::*;
@@ -27,6 +29,8 @@ pub struct Align16<T>(pub T);
 
 #[derive(thiserror::Error, Debug)]
 pub enum RenderError {
+    #[error("")]
+    ImageError(#[from] ::image::ImageError),
     #[error("")]
     VulkanError(#[from] ash::vk::Result),
     #[error("")]
