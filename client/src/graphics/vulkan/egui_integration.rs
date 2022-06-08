@@ -1,11 +1,14 @@
 use std::{ffi::c_void, rc::Rc};
 
-use crate::graphics::{
-    vulkan::{
-        descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-        Buffer, Device, ImageView, Pipeline, RenderError, Swapchain,
+use crate::{
+    graphics::{
+        vulkan::{
+            descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
+            Buffer, Device, ImageView, Pipeline, RenderError, Swapchain,
+        },
+        Window,
     },
-    Window,
+    Asset,
 };
 
 use super::Image;
@@ -624,8 +627,8 @@ impl EGuiIntegration {
             ])
             .build(
                 device,
-                "client/shaders/egui.vert.spv", // needs fixing for release mode
-                "client/shaders/egui.frag.spv", // needs fixing for release mode
+                Asset::get("shaders/egui.vert.spv").unwrap(),
+                Asset::get("shaders/egui.frag.spv").unwrap(),
                 render_pass,
                 pipeline_layout,
             )?)

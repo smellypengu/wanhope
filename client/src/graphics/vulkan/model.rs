@@ -88,8 +88,16 @@ impl Model {
         }))
     }
 
-    pub fn from_file(device: Rc<Device>, file_path: &str) -> anyhow::Result<Rc<Self>, RenderError> {
-        let (models, _) = tobj::load_obj(file_path, &tobj::GPU_LOAD_OPTIONS).unwrap();
+    pub fn from_file(
+        device: Rc<Device>,
+        file: rust_embed::EmbeddedFile,
+    ) -> anyhow::Result<Rc<Self>, RenderError> {
+        let (models, _) = tobj::load_obj_buf(
+            &mut std::io::BufReader::new(file.data.as_ref()),
+            &tobj::GPU_LOAD_OPTIONS,
+            |x| tobj::load_mtl(&x.to_owned()),
+        )
+        .unwrap();
 
         let mesh = &models[0].mesh;
 

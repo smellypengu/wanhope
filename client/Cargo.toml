@@ -37,3 +37,5 @@ anyhow = "1.0.57"
 
 log = "0.4.17"
 simple_logger = "2.1.0"
+
+rust-embed = "6.4.0"

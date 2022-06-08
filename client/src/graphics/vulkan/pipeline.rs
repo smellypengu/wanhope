@@ -165,13 +165,13 @@ impl PipelineBuilder {
     pub unsafe fn build(
         &self,
         device: Rc<Device>,
-        vert_file_path: &str,
-        frag_file_path: &str,
+        vert_file: rust_embed::EmbeddedFile,
+        frag_file: rust_embed::EmbeddedFile,
         render_pass: &ash::vk::RenderPass,
         pipeline_layout: &ash::vk::PipelineLayout,
     ) -> anyhow::Result<Rc<Pipeline>, RenderError> {
-        let vert_shader_module = ShaderModule::new(device.clone(), vert_file_path)?;
-        let frag_shader_module = ShaderModule::new(device.clone(), frag_file_path)?;
+        let vert_shader_module = ShaderModule::new(device.clone(), vert_file)?;
+        let frag_shader_module = ShaderModule::new(device.clone(), frag_file)?;
 
         let entry_point_name = CString::new("main").unwrap();
 

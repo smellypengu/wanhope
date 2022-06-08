@@ -103,8 +103,11 @@ impl Image {
         }))
     }
 
-    pub fn from_file(device: Rc<Device>, path: &str) -> anyhow::Result<Rc<Self>, RenderError> {
-        let image = image::open(path).map(|img| img.to_rgba8())?;
+    pub fn from_file(
+        device: Rc<Device>,
+        file: rust_embed::EmbeddedFile,
+    ) -> anyhow::Result<Rc<Self>, RenderError> {
+        let image = image::load_from_memory(file.data.as_ref()).map(|img| img.to_rgba8())?;
         let (width, height) = image.dimensions();
 
         let image_sampler = unsafe { Self::create_texture_sampler(&device)? };

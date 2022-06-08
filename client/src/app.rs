@@ -14,7 +14,7 @@ use crate::{
         Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
     },
     network::{Network, NetworkError},
-    Input, KeyboardMovementController,
+    Asset, Input, KeyboardMovementController,
 };
 
 pub struct App {
@@ -141,7 +141,10 @@ impl App {
                 .build()?
         };
 
-        let image = Image::from_file(device.clone(), "client/textures/texture.jpg")?; // needs fixing for release mode
+        let image = Image::from_file(
+            device.clone(),
+            Asset::get("textures/texture.jpg").unwrap(),
+        )?;
 
         let image_descriptor_set = unsafe {
             DescriptorSetWriter::new(image_set_layout.clone(), global_pool.clone())
@@ -499,7 +502,7 @@ impl App {
 
         let floor_model = Model::from_file(
             device.clone(),
-            "client/models/quad.obj", // needs fixing for release mode
+            Asset::get("models/quad.obj").unwrap(),
         )?;
 
         let floor = GameObject::new(
@@ -516,7 +519,7 @@ impl App {
 
         let flat_vase_model = Model::from_file(
             device.clone(),
-            "client/models/flat_vase.obj", // needs fixing for release mode
+            Asset::get("models/flat_vase.obj").unwrap(),
         )?;
 
         let flat_vase = GameObject::new(
@@ -533,7 +536,7 @@ impl App {
 
         let smooth_vase_model = Model::from_file(
             device.clone(),
-            "client/models/smooth_vase.obj", // needs fixing for release mode
+            Asset::get("models/smooth_vase.obj").unwrap(),
         )?;
 
         let smooth_vase = GameObject::new(
@@ -573,7 +576,7 @@ impl App {
 
         let select_model = Model::from_file(
             device.clone(),
-            "client/models/quad.obj", // needs fixing for release mode
+            Asset::get("models/quad.obj").unwrap(),
         )?;
 
         let select = GameObject::new(

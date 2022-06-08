@@ -4,9 +4,12 @@ use glam::Vec4Swizzles;
 use indexmap::IndexMap;
 use ordered_float::OrderedFloat;
 
-use crate::graphics::{
-    vulkan::{Device, Pipeline, RenderError},
-    FrameInfo, GlobalUbo, MAX_LIGHTS,
+use crate::{
+    graphics::{
+        vulkan::{Device, Pipeline, RenderError},
+        FrameInfo, GlobalUbo, MAX_LIGHTS,
+    },
+    Asset,
 };
 
 #[derive(Debug)]
@@ -63,8 +66,8 @@ impl PointLightSystem {
 
         let pipeline = Pipeline::start().enable_alpha_blending().build(
             device.clone(),
-            "client/shaders/point_light.vert.spv", // needs fixing for release mode
-            "client/shaders/point_light.frag.spv", // needs fixing for release mode
+            Asset::get("shaders/point_light.vert.spv").unwrap(),
+            Asset::get("shaders/point_light.frag.spv").unwrap(),
             &render_pass,
             &pipeline_layout,
         )?;

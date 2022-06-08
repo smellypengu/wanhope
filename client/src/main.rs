@@ -11,6 +11,10 @@ pub use keyboard_movement_controller::*;
 
 use crate::app::App;
 
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets"]
+pub struct Asset;
+
 fn main() {
     simple_logger::SimpleLogger::new()
         .without_timestamps()

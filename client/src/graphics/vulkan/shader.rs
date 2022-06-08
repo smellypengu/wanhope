@@ -8,11 +8,13 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    pub unsafe fn new<P: AsRef<std::path::Path>>(
+    pub unsafe fn new(
         device: Rc<Device>,
-        file_path: P,
+        file: rust_embed::EmbeddedFile,
     ) -> anyhow::Result<Rc<Self>, RenderError> {
-        let code = Self::read_file(file_path);
+        let code = ash::util::read_spv(&mut std::io::Cursor::new(file.data.as_ref()))
+            .map_err(|e| log::error!("Unable to read file: {}", e))
+            .unwrap();
 
         let create_info = ash::vk::ShaderModuleCreateInfo::builder().code(&code);
 
@@ -21,21 +23,6 @@ impl ShaderModule {
             .create_shader_module(&create_info, None)?;
 
         Ok(Rc::new(Self { device, module }))
-    }
-
-    fn read_file<P: AsRef<std::path::Path>>(file_path: P) -> Vec<u32> {
-        log::debug!(
-            "Loading shader file: {}",
-            file_path.as_ref().to_str().unwrap()
-        );
-
-        let mut file = std::fs::File::open(file_path)
-            .map_err(|e| log::error!("Unable to open file: {}", e))
-            .unwrap();
-
-        ash::util::read_spv(&mut file)
-            .map_err(|e| log::error!("Unable to read file: {}", e))
-            .unwrap()
     }
 
     #[inline]
