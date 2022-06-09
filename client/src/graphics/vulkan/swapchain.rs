@@ -529,7 +529,7 @@ impl Swapchain {
 
     #[inline]
     pub fn height(&self) -> u32 {
-        self.swapchain_extent.width
+        self.swapchain_extent.height
     }
 
     #[inline]
@@ -543,11 +543,8 @@ impl Drop for Swapchain {
         log::debug!("Dropping vulkan swapchain");
 
         unsafe {
-            // if let Some(swapchain_khr) = self.swapchain_khr {
-            //     self.swapchain.destroy_swapchain(swapchain_khr, None);
-            // }
-
-            // self.swapchain.destroy_swapchain(self.swapchain_khr, None); TODO: figure out why this line causes the rest of the app not to be destroyed properly
+            // TODO: figure out why this line causes the rest of the app not to be destroyed properly
+            // self.swapchain.destroy_swapchain(self.swapchain_khr, None);
 
             self.depth_images
                 .iter()

@@ -141,10 +141,7 @@ impl App {
                 .build()?
         };
 
-        let image = Image::from_file(
-            device.clone(),
-            Asset::get("textures/texture.jpg").unwrap(),
-        )?;
+        let image = Image::from_file(device.clone(), Asset::get("textures/texture.jpg").unwrap())?;
 
         let image_descriptor_set = unsafe {
             DescriptorSetWriter::new(image_set_layout.clone(), global_pool.clone())
@@ -216,6 +213,8 @@ impl App {
 
         let mut input = Input::new();
 
+        let mut recreate_swapchain = false;
+
         event_loop.run(move |event, _, control_flow| {
             *control_flow = winit::event_loop::ControlFlow::Poll;
 
@@ -233,7 +232,7 @@ impl App {
                         }
                         winit::event::WindowEvent::Resized(size) => {
                             if size != app.window.inner().inner_size() {
-                                app.resize().unwrap(); // TODO: fix unwrap?
+                                recreate_swapchain = true;
                             }
                         }
                         winit::event::WindowEvent::CursorMoved { position, .. } => {
@@ -258,7 +257,9 @@ impl App {
                     app.window.request_redraw();
                 }
                 winit::event::Event::RedrawRequested(_) => {
-                    app.draw(frame_time).unwrap(); // TODO: fix unwrap?
+                    app.draw(frame_time, recreate_swapchain).unwrap(); // TODO: fix unwrap?
+
+                    recreate_swapchain = false;
                 }
                 _ => {}
             }
@@ -373,11 +374,19 @@ impl App {
         Ok(())
     }
 
-    pub fn draw(&mut self, frame_time: f32) -> anyhow::Result<(), AppError> {
+    pub fn draw(
+        &mut self,
+        frame_time: f32,
+        recreate_swapchain: bool,
+    ) -> anyhow::Result<(), AppError> {
         let extent = Renderer::get_window_extent(&self.window);
 
         if extent.width == 0 || extent.height == 0 {
             return Ok(());
+        }
+
+        if recreate_swapchain {
+            self.resize()?;
         }
 
         match unsafe { self.renderer.begin_frame(&self.window)? } {
@@ -500,10 +509,7 @@ impl App {
     ) -> anyhow::Result<(HashMap<u8, GameObject>, u8), AppError> {
         let mut game_objects = HashMap::new();
 
-        let floor_model = Model::from_file(
-            device.clone(),
-            Asset::get("models/quad.obj").unwrap(),
-        )?;
+        let floor_model = Model::from_file(device.clone(), Asset::get("models/quad.obj").unwrap())?;
 
         let floor = GameObject::new(
             Some(floor_model),
@@ -517,10 +523,8 @@ impl App {
 
         game_objects.insert(floor.id, floor);
 
-        let flat_vase_model = Model::from_file(
-            device.clone(),
-            Asset::get("models/flat_vase.obj").unwrap(),
-        )?;
+        let flat_vase_model =
+            Model::from_file(device.clone(), Asset::get("models/flat_vase.obj").unwrap())?;
 
         let flat_vase = GameObject::new(
             Some(flat_vase_model),
@@ -574,10 +578,8 @@ impl App {
             game_objects.insert(point_light.id, point_light);
         }
 
-        let select_model = Model::from_file(
-            device.clone(),
-            Asset::get("models/quad.obj").unwrap(),
-        )?;
+        let select_model =
+            Model::from_file(device.clone(), Asset::get("models/quad.obj").unwrap())?;
 
         let select = GameObject::new(
             Some(select_model),
