@@ -96,7 +96,7 @@ impl EGui {
                     ui.heading("Wanhope");
                     ui.separator();
 
-                    if network.client_id.is_none() {
+                    if !network.connected {
                         ui.horizontal(|ui| {
                             ui.label("Username: ");
                             ui.text_edit_singleline(&mut network.username);

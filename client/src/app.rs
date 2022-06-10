@@ -441,7 +441,7 @@ impl App {
                         &self.world,
                     )?;
 
-                    self.renderer.end_frame()?;
+                    self.renderer.end_frame(&self.window)?;
                 }
             }
             None => {}
@@ -472,9 +472,9 @@ impl App {
             for y in 0..div + 1 {
                 vertices.push(Vertex {
                     position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
-                    color: glam::vec3(0.0, 0.0, 0.5),
+                    color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(0.0, 0.0),
+                    uv: glam::vec2(x as f32, y as f32),
                 });
             }
         }

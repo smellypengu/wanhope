@@ -6,8 +6,9 @@ use std::{
 pub struct Network {
     socket: Option<UdpSocket>,
 
-    pub username: String,
+    pub connected: bool,
     pub client_id: Option<u8>,
+    pub username: String,
 
     keep_alive_timer: i16,
 }
@@ -17,15 +18,16 @@ impl Network {
         Self {
             socket: None,
 
-            username: "".to_string(),
+            connected: false,
             client_id: None,
+            username: "".to_string(),
 
             keep_alive_timer: 0,
         }
     }
 
     pub fn join(&mut self) -> anyhow::Result<(), NetworkError> {
-        if self.client_id.is_none() {
+        if !self.connected {
             if self.username != "".to_string() {
                 let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 
@@ -59,6 +61,7 @@ impl Network {
                             if len > 1 as usize {
                                 println!("user id: {}", response[1]);
 
+                                self.connected = true;
                                 self.client_id = Some(response[1]);
                             } else {
                                 log::info!("Server did not let us in");
@@ -76,14 +79,15 @@ impl Network {
     }
 
     pub fn leave(&mut self) -> anyhow::Result<(), NetworkError> {
-        match &self.socket {
-            Some(socket) => {
+        if self.connected {
+            if let Some(socket) = &self.socket {
                 socket.send(&[common::ClientPacket::Leave as u8, self.client_id.unwrap()])?;
 
                 self.socket = None;
+
+                self.connected = false;
                 self.client_id = None;
             }
-            None => {}
         }
 
         Ok(())
@@ -92,8 +96,8 @@ impl Network {
     pub fn update(
         &mut self,
     ) -> anyhow::Result<(Option<common::ServerPacket>, Vec<u8>), NetworkError> {
-        match &self.socket {
-            Some(socket) => {
+        if self.connected {
+            if let Some(socket) = &self.socket {
                 // set to nonblocking so recv() call doesn't freeze app, probably temporary
                 socket.set_nonblocking(true)?;
 
@@ -121,36 +125,31 @@ impl Network {
                     Err(_) => {}
                 }
             }
-            None => {}
         }
 
         Ok((None, Vec::new()))
     }
 
     pub fn send_chat_message(&self, message: &String) -> anyhow::Result<(), NetworkError> {
-        match &self.socket {
-            Some(socket) => {
-                let mut send = vec![
-                    common::ClientPacket::Chat as u8,
-                    self.client_id.unwrap(),
-                ];
+        if self.connected {
+            if let Some(socket) = &self.socket {
+                let mut send = vec![common::ClientPacket::Chat as u8, self.client_id.unwrap()];
 
                 send.extend(message.as_bytes().iter().copied());
 
                 socket.send(&send)?;
             }
-            None => {}
         }
 
         Ok(())
-    } 
+    }
 
     pub fn send_client_world_click(
         &self,
         position: glam::Vec2,
     ) -> anyhow::Result<(), NetworkError> {
-        match &self.socket {
-            Some(socket) => {
+        if self.connected {
+            if let Some(socket) = &self.socket {
                 let mut send = vec![
                     common::ClientPacket::WorldClick as u8,
                     self.client_id.unwrap(),
@@ -167,7 +166,6 @@ impl Network {
 
                 // get a result?
             }
-            None => {}
         }
 
         Ok(())

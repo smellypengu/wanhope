@@ -51,15 +51,15 @@ impl Renderer {
             }
             Err(_) => {
                 log::error!("Unable to acquire next image");
-                panic!("Unable to handle this error")
+                panic!("Unable to handle this error");
             }
             Ok((current_image_index, _is_subopt)) => {
                 // match is_subopt {
                 //     true => {
                 //         log::warn!("Vulkan swapchain is suboptimal for surface");
-                //         self.recreate_swapchain(window);
+                //         self.recreate_swapchain(window)?;
                 //     }
-                //     false => { }
+                //     false => {}
                 // }
 
                 self.is_frame_started = true;
@@ -78,7 +78,7 @@ impl Renderer {
         Ok(Some(command_buffer))
     }
 
-    pub unsafe fn end_frame(&mut self) -> anyhow::Result<(), RenderError> {
+    pub unsafe fn end_frame(&mut self, window: &Window) -> anyhow::Result<(), RenderError> {
         assert!(
             self.is_frame_started,
             "Cannot call end_frame while frame is not in progress"
@@ -90,8 +90,21 @@ impl Renderer {
             .logical_device
             .end_command_buffer(command_buffer)?;
 
-        self.swapchain
-            .submit_command_buffers(command_buffer, self.current_image_index)?;
+        let result = self
+            .swapchain
+            .submit_command_buffers(command_buffer, self.current_image_index);
+
+        match result {
+            Err(RenderError::VulkanError(ash::vk::Result::ERROR_OUT_OF_DATE_KHR)) => {
+                log::error!("Out of date KHR!");
+                self.recreate_swapchain(window)?;
+            }
+            Err(_) => {
+                log::error!("Unable to acquire next image");
+                panic!("Unable to handle this error");
+            }
+            Ok(_is_subopt) => {}
+        }
 
         self.device.logical_device.device_wait_idle()?;
 
@@ -191,7 +204,7 @@ impl Renderer {
         let extent = Self::get_window_extent(window);
 
         if extent.width == 0 || extent.height == 0 {
-            return Ok(()); // Don't do anything if the window is minimised
+            return Ok(());
         }
 
         log::debug!("Recreating vulkan swapchain");

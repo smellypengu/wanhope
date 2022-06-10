@@ -140,13 +140,10 @@ impl PointLightSystem {
         for kv in frame_info.game_objects.iter() {
             let obj = kv.1;
 
-            match &obj.point_light {
-                Some(_) => {
-                    let offset = frame_info.camera.position() - obj.transform.translation;
-                    let dis_squared = offset.dot(offset);
-                    sorted.insert(OrderedFloat::from(dis_squared), obj.id);
-                }
-                None => {}
+            if obj.point_light.is_some() {
+                let offset = frame_info.camera.position() - obj.transform.translation;
+                let dis_squared = offset.dot(offset);
+                sorted.insert(OrderedFloat::from(dis_squared), obj.id);
             }
         }
 
@@ -202,7 +199,7 @@ impl PointLightSystem {
 
 impl Drop for PointLightSystem {
     fn drop(&mut self) {
-        log::debug!("Dropping simple render system");
+        log::debug!("Dropping point light system");
 
         unsafe {
             self.device
