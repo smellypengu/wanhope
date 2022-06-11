@@ -492,12 +492,15 @@ impl App {
             for y in 0..world.height {
                 let tile = world.tiles.get((x, y)).unwrap();
 
-                let size = (1.0 / 16.0) - (1.0 / self.texture_atlas.size as f32) * 2.0;
+                let size = (1.0 / 16.0)
+                    - (1.0 / (self.texture_atlas.size * self.texture_atlas.tile_size) as f32) * 2.0;
 
                 let offsetx = match tile.ty {
                     common::world::TileType::Empty => 0.0,
                     common::world::TileType::Floor => {
-                        32.0 * ((1.0 / 16.0) + (1.0 / self.texture_atlas.size as f32))
+                        32.0 * ((1.0 / 16.0)
+                            + (1.0
+                                / (self.texture_atlas.size * self.texture_atlas.tile_size) as f32))
                     }
                 };
 
