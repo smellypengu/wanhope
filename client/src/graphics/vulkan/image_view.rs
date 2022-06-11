@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use super::{Device, RenderError};
+use crate::graphics::RenderError;
+
+use super::Device;
 
 pub struct ImageView {
     device: Rc<Device>,

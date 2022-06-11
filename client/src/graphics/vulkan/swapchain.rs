@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use super::{Device, ImageView, RenderError};
+use crate::graphics::RenderError;
+
+use super::{Device, ImageView};
 
 pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 

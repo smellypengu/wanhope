@@ -1,6 +1,8 @@
 use std::{ffi::c_void, marker::PhantomData, rc::Rc};
 
-use super::{Device, RenderError};
+use crate::graphics::RenderError;
+
+use super::Device;
 
 pub struct Buffer<T>
 where

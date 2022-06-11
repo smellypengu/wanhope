@@ -3,7 +3,9 @@ use std::{
     rc::Rc,
 };
 
-use super::{Instance, RenderError, ENABLE_VALIDATION_LAYERS};
+use crate::graphics::RenderError;
+
+use super::{Instance, ENABLE_VALIDATION_LAYERS};
 
 pub struct SwapchainSupportDetails {
     pub capabilities: ash::vk::SurfaceCapabilitiesKHR,

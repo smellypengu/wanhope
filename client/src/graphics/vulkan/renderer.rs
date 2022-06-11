@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use crate::graphics::{vulkan::MAX_FRAMES_IN_FLIGHT, Window};
+use crate::graphics::{vulkan::MAX_FRAMES_IN_FLIGHT, RenderError, Window};
 
-use super::{Device, RenderError, Swapchain};
+use super::{Device, Swapchain};
 
 pub struct Renderer {
     pub device: Rc<Device>,

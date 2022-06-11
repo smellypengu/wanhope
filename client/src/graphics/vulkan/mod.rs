@@ -26,15 +26,3 @@ pub use swapchain::*;
 #[repr(align(16))]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Align16<T>(pub T);
-
-#[derive(thiserror::Error, Debug)]
-pub enum RenderError {
-    #[error("")]
-    ImageError(#[from] ::image::ImageError),
-    #[error("")]
-    VulkanError(#[from] ash::vk::Result),
-    #[error("")]
-    LoadingError(#[from] ash::LoadingError),
-    #[error("Swapchain image or depth format has changed")]
-    CompareSwapFormatsError,
-}

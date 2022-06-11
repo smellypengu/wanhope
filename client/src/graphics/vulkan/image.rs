@@ -1,6 +1,8 @@
 use std::rc::Rc;
 
-use super::{Buffer, Device, ImageView, RenderError};
+use crate::graphics::RenderError;
+
+use super::{Buffer, Device, ImageView};
 
 pub struct Image {
     device: Rc<Device>,

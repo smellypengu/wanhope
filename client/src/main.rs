@@ -12,8 +12,16 @@ pub use keyboard_movement_controller::*;
 use crate::app::App;
 
 #[derive(rust_embed::RustEmbed)]
-#[folder = "assets"]
-pub struct Asset;
+#[folder = "assets/models"]
+pub struct ModelAsset;
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets/shaders"]
+pub struct ShaderAsset;
+
+#[derive(rust_embed::RustEmbed)]
+#[folder = "assets/textures"]
+pub struct TextureAsset;
 
 fn main() {
     simple_logger::SimpleLogger::new()

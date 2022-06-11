@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use crate::graphics::vulkan::{Device, RenderError};
+use crate::graphics::{vulkan::Device, RenderError};
 
 pub struct DescriptorPoolBuilder {
     device: Rc<Device>,

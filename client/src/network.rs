@@ -155,8 +155,13 @@ impl Network {
                     self.client_id.unwrap(),
                 ];
 
+                let p = common::Position {
+                    x: position.x,
+                    y: position.y,
+                };
+
                 send.extend(
-                    &mut bincode::serde::encode_to_vec(&position, bincode::config::standard())
+                    &mut bincode::encode_to_vec(p, bincode::config::standard())
                         .unwrap()
                         .iter()
                         .copied(),

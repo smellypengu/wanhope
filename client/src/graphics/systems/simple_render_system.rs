@@ -2,10 +2,10 @@ use std::rc::Rc;
 
 use crate::{
     graphics::{
-        vulkan::{Device, Pipeline, RenderError, Vertex},
-        FrameInfo,
+        vulkan::{Device, Pipeline, Vertex},
+        FrameInfo, RenderError,
     },
-    Asset,
+    ShaderAsset,
 };
 
 #[derive(Debug)]
@@ -64,8 +64,8 @@ impl SimpleRenderSystem {
             .attribute_descriptions(Vertex::attribute_descriptions())
             .build(
                 device.clone(),
-                Asset::get("shaders/simple_shader.vert.spv").unwrap(),
-                Asset::get("shaders/simple_shader.frag.spv").unwrap(),
+                ShaderAsset::get("simple_shader.vert.spv").unwrap(),
+                ShaderAsset::get("simple_shader.frag.spv").unwrap(),
                 &render_pass,
                 &pipeline_layout,
             )?;

@@ -1,6 +1,6 @@
 use std::ffi::{c_void, CStr, CString};
 
-use super::RenderError;
+use crate::graphics::RenderError;
 
 pub const ENABLE_VALIDATION_LAYERS: bool = true;
 
@@ -111,7 +111,9 @@ impl Instance {
         Ok((debug_report, debug_report_callback))
     }
 
-    unsafe fn check_validation_layer_support(entry: &ash::Entry) -> anyhow::Result<bool, RenderError> {
+    unsafe fn check_validation_layer_support(
+        entry: &ash::Entry,
+    ) -> anyhow::Result<bool, RenderError> {
         let layer_properties = entry.enumerate_instance_layer_properties()?;
 
         if layer_properties.len() <= 0 {

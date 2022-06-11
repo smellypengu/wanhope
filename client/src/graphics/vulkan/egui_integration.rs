@@ -4,11 +4,11 @@ use crate::{
     graphics::{
         vulkan::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-            Buffer, Device, ImageView, Pipeline, RenderError, Swapchain,
+            Buffer, Device, ImageView, Pipeline, Swapchain,
         },
-        Window,
+        RenderError, Window,
     },
-    Asset,
+    ShaderAsset,
 };
 
 use super::Image;
@@ -627,8 +627,8 @@ impl EGuiIntegration {
             ])
             .build(
                 device,
-                Asset::get("shaders/egui.vert.spv").unwrap(),
-                Asset::get("shaders/egui.frag.spv").unwrap(),
+                ShaderAsset::get("egui.vert.spv").unwrap(),
+                ShaderAsset::get("egui.frag.spv").unwrap(),
                 render_pass,
                 pipeline_layout,
             )?)
@@ -691,9 +691,6 @@ impl Drop for EGuiIntegration {
             self.device
                 .logical_device
                 .destroy_render_pass(self.render_pass, None);
-            self.device
-                .logical_device
-                .destroy_sampler(self.sampler, None);
 
             self.device
                 .logical_device

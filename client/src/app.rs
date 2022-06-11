@@ -1,6 +1,6 @@
 use std::{collections::HashMap, f32::consts::PI, ffi::CString, rc::Rc, time::Instant};
 
-use glam::{Vec3Swizzles, Vec4Swizzles};
+use glam::Vec4Swizzles;
 
 use crate::{
     egui::{ui, EGui},
@@ -9,12 +9,13 @@ use crate::{
         systems::{PointLightSystem, SimpleRenderSystem},
         vulkan::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
-            Buffer, Device, Image, Model, RenderError, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
+            Buffer, Device, Image, Model, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
         },
-        Camera, FrameInfo, GlobalUbo, PointLight, Window, WindowSettings, MAX_LIGHTS,
+        Camera, FrameInfo, GlobalUbo, PointLight, RenderError, TextureAtlas, Window,
+        WindowSettings, MAX_LIGHTS,
     },
     network::{Network, NetworkError},
-    Asset, Input, KeyboardMovementController,
+    Input, KeyboardMovementController, ModelAsset, TextureAsset,
 };
 
 pub struct App {
@@ -33,7 +34,9 @@ pub struct App {
 
     image_set_layout: Rc<DescriptorSetLayout>,
     image_descriptor_set: ash::vk::DescriptorSet,
-    image: Rc<Image>,
+
+    texture_atlas: TextureAtlas,
+    texture_atlas_image: Rc<Image>,
 
     simple_render_system: SimpleRenderSystem,
     point_light_system: PointLightSystem,
@@ -49,6 +52,7 @@ pub struct App {
     network: Network,
 
     world: Option<common::world::World>,
+    previous_world_id: Option<u8>,
 }
 
 impl App {
@@ -79,10 +83,6 @@ impl App {
                 )
                 .pool_size(
                     ash::vk::DescriptorType::SAMPLED_IMAGE,
-                    MAX_FRAMES_IN_FLIGHT as u32,
-                )
-                .pool_size(
-                    ash::vk::DescriptorType::STORAGE_BUFFER,
                     MAX_FRAMES_IN_FLIGHT as u32,
                 )
                 .build()?
@@ -141,11 +141,16 @@ impl App {
                 .build()?
         };
 
-        let image = Image::from_file(device.clone(), Asset::get("textures/texture.jpg").unwrap())?;
+        let textures = TextureAsset::iter()
+            .map(|x| TextureAsset::get(&x).unwrap())
+            .collect::<Vec<rust_embed::EmbeddedFile>>();
+
+        let texture_atlas = TextureAtlas::new(10, 32, textures)?;
+        let texture_atlas_image = texture_atlas.to_vulkan(device.clone())?;
 
         let image_descriptor_set = unsafe {
             DescriptorSetWriter::new(image_set_layout.clone(), global_pool.clone())
-                .write_image(0, &[image.image_info])
+                .write_image(0, &[texture_atlas_image.image_info])
                 .build()
                 .unwrap()
         };
@@ -183,7 +188,9 @@ impl App {
 
             image_set_layout,
             image_descriptor_set,
-            image,
+
+            texture_atlas,
+            texture_atlas_image,
 
             ubo_buffers,
 
@@ -201,6 +208,7 @@ impl App {
             network: Network::new(),
 
             world: None,
+            previous_world_id: None,
         })
     }
 
@@ -306,8 +314,21 @@ impl App {
                             .unwrap()
                             .0;
 
-                    if self.world.is_none() {
-                        self.create_world(&world)?;
+                    if let Some(previous_world) = &self.world {
+                        if !world
+                            .tiles
+                            .iter()
+                            .zip(previous_world.tiles.iter())
+                            .all(|(tile_a, tile_b)| tile_a.ty == tile_b.ty)
+                        {
+                            log::info!("recreating world game object");
+                            self.previous_world_id = Some(
+                                self.create_world_game_object(&world, self.previous_world_id)?,
+                            );
+                        }
+                    } else {
+                        self.previous_world_id =
+                            Some(self.create_world_game_object(&world, self.previous_world_id)?);
                     }
 
                     self.world = Some(world);
@@ -346,24 +367,24 @@ impl App {
                             let point = ray.origin + ray.dir * distance;
 
                             let position =
-                                (glam::vec3((point.x - 0.5) / 10.0, 0.0, (point.z + 0.5) / 10.0)
-                                    * 10.0)
+                                (glam::vec2((point.x - 0.5) / 10.0, (point.z + 0.5) / 10.0) * 10.0)
                                     .round();
 
-                            log::info!("{}", position);
+                            let p = position - glam::Vec2::Y;
 
-                            if position.x >= 0.0
-                                && position.z < 1.0
-                                && position.x < world.width as f32
-                                && position.z > -(world.height as f32)
+                            if p.x >= 0.0
+                                && p.y >= 0.0
+                                && p.x < world.width as f32
+                                && p.y < world.height as f32
                             {
-                                self.network.send_client_world_click(position.xz().abs())?;
+                                self.network.send_client_world_click(p.abs())?;
 
                                 self.game_objects
                                     .get_mut(&self.select_id)
                                     .unwrap()
                                     .transform
-                                    .translation = position + glam::vec3(0.5, 0.0, -0.5);
+                                    .translation =
+                                    glam::vec3(position.x + 0.5, 0.0, position.y - 0.5);
                             }
                         }
                     }
@@ -460,48 +481,85 @@ impl App {
         Ok(())
     }
 
-    fn create_world(&mut self, world: &common::world::World) -> anyhow::Result<(), AppError> {
+    fn create_world_game_object(
+        &mut self,
+        world: &common::world::World,
+        previous_world_id: Option<u8>,
+    ) -> anyhow::Result<u8, AppError> {
         let mut vertices: Vec<Vertex> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
 
-        let div = 10;
+        for x in 0..world.width {
+            for y in 0..world.height {
+                let tile = world.tiles.get((x, y)).unwrap();
 
-        let triangle_side = (world.width / div) as f32;
+                let size = (1.0 / 16.0) - (1.0 / self.texture_atlas.size as f32) * 2.0;
 
-        for x in 0..div + 1 {
-            for y in 0..div + 1 {
+                let offsetx = match tile.ty {
+                    common::world::TileType::Empty => 0.0,
+                    common::world::TileType::Floor => {
+                        32.0 * ((1.0 / 16.0) + (1.0 / self.texture_atlas.size as f32))
+                    }
+                };
+
+                let offsety = 0.0;
+
                 vertices.push(Vertex {
-                    position: glam::vec3(y as f32 * triangle_side, 0.0, x as f32 * -triangle_side),
+                    position: glam::vec3(x as f32, 0.0, y as f32),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(x as f32, y as f32),
+                    uv: glam::vec2(offsetx, offsety),
+                });
+
+                vertices.push(Vertex {
+                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32),
+                    color: glam::vec3(1.0, 1.0, 1.0),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(offsetx + size, offsety),
+                });
+
+                vertices.push(Vertex {
+                    position: glam::vec3(x as f32, 0.0, y as f32 + 1.0),
+                    color: glam::vec3(1.0, 1.0, 1.0),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(offsetx, offsety + size),
+                });
+
+                vertices.push(Vertex {
+                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32),
+                    color: glam::vec3(1.0, 1.0, 1.0),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(offsetx + size, offsety),
+                });
+
+                vertices.push(Vertex {
+                    position: glam::vec3(x as f32, 0.0, y as f32 + 1.0),
+                    color: glam::vec3(1.0, 1.0, 1.0),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(offsetx, offsety + size),
+                });
+
+                vertices.push(Vertex {
+                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32 + 1.0),
+                    color: glam::vec3(1.0, 1.0, 1.0),
+                    normal: glam::vec3(0.0, 0.0, 0.0),
+                    uv: glam::vec2(offsetx + size, offsety + size),
                 });
             }
         }
 
-        for x in 0..div {
-            for y in 0..div {
-                let index = x * (div + 1) + y;
-
-                // Top triangle in tile
-                indices.push(index as u32);
-                indices.push((index + (div + 1) + 1) as u32);
-                indices.push((index + (div + 1)) as u32);
-
-                // Bottom triangle in tile
-                indices.push(index as u32);
-                indices.push((index + 1) as u32);
-                indices.push((index + (div + 1) + 1) as u32);
-            }
-        }
-
-        let model = Model::new(self.device.clone(), &vertices, Some(&indices))?;
+        let model = Model::new(self.device.clone(), &vertices, None)?;
 
         let obj = GameObject::new(Some(model), None, None);
 
-        self.game_objects.insert(obj.id, obj);
+        let id = obj.id;
 
-        Ok(())
+        if let Some(previous_world_id) = previous_world_id {
+            self.game_objects.remove(&previous_world_id);
+        }
+
+        self.game_objects.insert(id, obj);
+
+        Ok(id)
     }
 
     fn load_game_objects(
@@ -509,7 +567,7 @@ impl App {
     ) -> anyhow::Result<(HashMap<u8, GameObject>, u8), AppError> {
         let mut game_objects = HashMap::new();
 
-        let floor_model = Model::from_file(device.clone(), Asset::get("models/quad.obj").unwrap())?;
+        let floor_model = Model::from_file(device.clone(), ModelAsset::get("quad.obj").unwrap())?;
 
         let floor = GameObject::new(
             Some(floor_model),
@@ -524,7 +582,7 @@ impl App {
         game_objects.insert(floor.id, floor);
 
         let flat_vase_model =
-            Model::from_file(device.clone(), Asset::get("models/flat_vase.obj").unwrap())?;
+            Model::from_file(device.clone(), ModelAsset::get("flat_vase.obj").unwrap())?;
 
         let flat_vase = GameObject::new(
             Some(flat_vase_model),
@@ -538,10 +596,8 @@ impl App {
 
         game_objects.insert(flat_vase.id, flat_vase);
 
-        let smooth_vase_model = Model::from_file(
-            device.clone(),
-            Asset::get("models/smooth_vase.obj").unwrap(),
-        )?;
+        let smooth_vase_model =
+            Model::from_file(device.clone(), ModelAsset::get("smooth_vase.obj").unwrap())?;
 
         let smooth_vase = GameObject::new(
             Some(smooth_vase_model),
@@ -578,8 +634,7 @@ impl App {
             game_objects.insert(point_light.id, point_light);
         }
 
-        let select_model =
-            Model::from_file(device.clone(), Asset::get("models/quad.obj").unwrap())?;
+        let select_model = Model::from_file(device.clone(), ModelAsset::get("quad.obj").unwrap())?;
 
         let select = GameObject::new(
             Some(select_model),

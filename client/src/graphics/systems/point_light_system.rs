@@ -6,10 +6,10 @@ use ordered_float::OrderedFloat;
 
 use crate::{
     graphics::{
-        vulkan::{Device, Pipeline, RenderError},
-        FrameInfo, GlobalUbo, MAX_LIGHTS,
+        vulkan::{Device, Pipeline},
+        FrameInfo, GlobalUbo, RenderError, MAX_LIGHTS,
     },
-    Asset,
+    ShaderAsset,
 };
 
 #[derive(Debug)]
@@ -66,8 +66,8 @@ impl PointLightSystem {
 
         let pipeline = Pipeline::start().enable_alpha_blending().build(
             device.clone(),
-            Asset::get("shaders/point_light.vert.spv").unwrap(),
-            Asset::get("shaders/point_light.frag.spv").unwrap(),
+            ShaderAsset::get("point_light.vert.spv").unwrap(),
+            ShaderAsset::get("point_light.frag.spv").unwrap(),
             &render_pass,
             &pipeline_layout,
         )?;

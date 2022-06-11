@@ -1,6 +1,8 @@
 use std::{ffi::CString, rc::Rc};
 
-use super::{Device, RenderError, ShaderModule};
+use crate::graphics::RenderError;
+
+use super::{Device, ShaderModule};
 
 struct PipelineInfo {
     binding_descriptions: Vec<ash::vk::VertexInputBindingDescription>,

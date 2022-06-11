@@ -1,6 +1,8 @@
 use std::{mem::size_of, rc::Rc};
 
-use super::{Buffer, Device, RenderError};
+use crate::graphics::RenderError;
+
+use super::{Buffer, Device};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Vertex {

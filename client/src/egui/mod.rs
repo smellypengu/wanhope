@@ -5,8 +5,8 @@ use std::collections::{BTreeSet, HashMap};
 use crate::{
     app::AppError,
     graphics::{
-        vulkan::{EGuiIntegration, RenderError, Renderer},
-        Window,
+        vulkan::{EGuiIntegration, Renderer},
+        RenderError, Window,
     },
     network::Network,
 };

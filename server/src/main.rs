@@ -137,7 +137,11 @@ async fn main() -> crate::Result<()> {
                         if i != client_id as usize {
                             if let Some(client) = &c[i] {
                                 if tx
-                                    .send((client.addr, common::ServerPacket::ClientLeave, Vec::new()))
+                                    .send((
+                                        client.addr,
+                                        common::ServerPacket::ClientLeave,
+                                        Vec::new(),
+                                    ))
                                     .await
                                     .is_err()
                                 {
@@ -200,7 +204,7 @@ async fn main() -> crate::Result<()> {
 
                     if let Some(client) = &mut clients2.lock().await[client_id as usize] {
                         if verify_client(addr, client.addr) {
-                            let deserialized_position: bincode::serde::Compat<glam::Vec2> =
+                            let deserialized_position: common::Position =
                                 bincode::decode_from_slice(split.1, bincode::config::standard())
                                     .unwrap()
                                     .0;
@@ -210,8 +214,8 @@ async fn main() -> crate::Result<()> {
                                 .await
                                 .tiles
                                 .get_mut((
-                                    deserialized_position.0.x as usize,
-                                    deserialized_position.0.y as usize,
+                                    deserialized_position.x as usize,
+                                    deserialized_position.y as usize,
                                 ))
                                 .unwrap()
                                 .ty = common::world::TileType::Floor;
@@ -246,9 +250,14 @@ async fn main() -> crate::Result<()> {
                     for i in 0..MAX_CLIENTS {
                         if i != client_id as usize {
                             if let Some(client) = &clients3.lock().await[i] {
-                                if send(&s2, client.addr, common::ServerPacket::ClientLeave, Vec::new())
-                                    .await
-                                    .is_err()
+                                if send(
+                                    &s2,
+                                    client.addr,
+                                    common::ServerPacket::ClientLeave,
+                                    Vec::new(),
+                                )
+                                .await
+                                .is_err()
                                 {
                                     // TODO: handle better
                                     log::warn!("Failed to send");
