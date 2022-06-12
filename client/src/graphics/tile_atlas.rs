@@ -7,54 +7,62 @@ use super::{
     RenderError,
 };
 
-pub struct TextureAtlas {
+pub struct TileAtlas {
     image_buffer: image::ImageBuffer<image::Rgba<u8>, Vec<u8>>,
+    textures: Vec<image::DynamicImage>,
 
     pub size: u32,
     pub tile_size: u32,
 }
 
-impl TextureAtlas {
-    pub fn new(
-        size: u32,
-        tile_size: u32,
-        textures: Vec<rust_embed::EmbeddedFile>,
-    ) -> anyhow::Result<Self, RenderError> {
-        let mut image_buffer = image::ImageBuffer::new(size * tile_size, size * tile_size);
-
-        let mut x = 0;
-        let mut y = 0;
-
-        for texture in textures {
-            if x == size * tile_size {
-                x = 0;
-                y += tile_size;
-            }
-
-            if y == size * tile_size {
-                // out of bounds
-                return Err(RenderError::TextureAtlasError);
-            }
-
-            let image = image::load_from_memory(texture.data.as_ref())?;
-
-            image_buffer.copy_from(&image, x, y)?;
-
-            x += tile_size;
-        }
+impl TileAtlas {
+    pub fn new(size: u32, tile_size: u32) -> anyhow::Result<Self, RenderError> {
+        let image_buffer = image::ImageBuffer::new(size * tile_size, size * tile_size);
 
         Ok(Self {
             image_buffer,
+            textures: Vec::new(),
+
             size,
             tile_size,
         })
     }
 
-    pub fn to_vulkan(&self, device: Rc<Device>) -> anyhow::Result<Rc<Image>, RenderError> {
+    pub fn add_texture(
+        &mut self,
+        asset: rust_embed::EmbeddedFile,
+    ) -> anyhow::Result<(), RenderError> {
+        let image = image::load_from_memory(asset.data.as_ref())?;
+
+        self.textures.push(image);
+
+        Ok(())
+    }
+
+    pub fn build(&mut self, device: Rc<Device>) -> anyhow::Result<Rc<Image>, RenderError> {
+        let mut x = 0;
+        let mut y = 0;
+
+        for texture in &self.textures {
+            if x == self.size * self.tile_size {
+                x = 0;
+                y += self.tile_size;
+            }
+
+            if y == self.size * self.tile_size {
+                // out of bounds
+                return Err(RenderError::TextureAtlasError);
+            }
+
+            self.image_buffer.copy_from(texture, x, y)?;
+
+            x += self.tile_size;
+        }
+
         let sampler_create_info = ash::vk::SamplerCreateInfo {
-            mag_filter: ash::vk::Filter::LINEAR,
-            min_filter: ash::vk::Filter::LINEAR,
-            mipmap_mode: ash::vk::SamplerMipmapMode::LINEAR,
+            mag_filter: ash::vk::Filter::NEAREST,
+            min_filter: ash::vk::Filter::NEAREST,
+            mipmap_mode: ash::vk::SamplerMipmapMode::NEAREST,
             address_mode_u: ash::vk::SamplerAddressMode::REPEAT,
             address_mode_v: ash::vk::SamplerAddressMode::REPEAT,
             address_mode_w: ash::vk::SamplerAddressMode::REPEAT,
@@ -76,12 +84,12 @@ impl TextureAtlas {
                 .create_sampler(&sampler_create_info, None)?
         };
 
-        Ok(Image::from_raw(
+        Image::from_raw(
             device,
             self.image_buffer.clone().into_raw(),
             self.image_buffer.width(),
             self.image_buffer.height(),
             sampler,
-        )?)
+        )
     }
 }

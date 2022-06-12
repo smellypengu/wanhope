@@ -11,8 +11,8 @@ use crate::{
             descriptor_set::{DescriptorPool, DescriptorSetLayout, DescriptorSetWriter},
             Buffer, Device, Image, Model, Renderer, Vertex, MAX_FRAMES_IN_FLIGHT,
         },
-        Camera, FrameInfo, GlobalUbo, PointLight, RenderError, TextureAtlas, Window,
-        WindowSettings, MAX_LIGHTS,
+        Camera, FrameInfo, GlobalUbo, PointLight, RenderError, TileAtlas, Window, WindowSettings,
+        MAX_LIGHTS,
     },
     network::{Network, NetworkError},
     Input, KeyboardMovementController, ModelAsset, TextureAsset,
@@ -35,8 +35,8 @@ pub struct App {
     image_set_layout: Rc<DescriptorSetLayout>,
     image_descriptor_set: ash::vk::DescriptorSet,
 
-    texture_atlas: TextureAtlas,
-    texture_atlas_image: Rc<Image>,
+    tile_atlas: TileAtlas,
+    tile_atlas_image: Rc<Image>,
 
     simple_render_system: SimpleRenderSystem,
     point_light_system: PointLightSystem,
@@ -141,16 +141,19 @@ impl App {
                 .build()?
         };
 
-        let textures = TextureAsset::iter()
-            .map(|x| TextureAsset::get(&x).unwrap())
-            .collect::<Vec<rust_embed::EmbeddedFile>>();
+        let mut tile_atlas = TileAtlas::new(4, 32)?;
 
-        let texture_atlas = TextureAtlas::new(10, 32, textures)?;
-        let texture_atlas_image = texture_atlas.to_vulkan(device.clone())?;
+        for path in TextureAsset::iter() {
+            let asset = TextureAsset::get(&path).unwrap();
+
+            tile_atlas.add_texture(asset)?;
+        }
+
+        let tile_atlas_image = tile_atlas.build(device.clone())?;
 
         let image_descriptor_set = unsafe {
             DescriptorSetWriter::new(image_set_layout.clone(), global_pool.clone())
-                .write_image(0, &[texture_atlas_image.image_info])
+                .write_image(0, &[tile_atlas_image.image_info])
                 .build()
                 .unwrap()
         };
@@ -189,8 +192,8 @@ impl App {
             image_set_layout,
             image_descriptor_set,
 
-            texture_atlas,
-            texture_atlas_image,
+            tile_atlas,
+            tile_atlas_image,
 
             ubo_buffers,
 
@@ -493,14 +496,14 @@ impl App {
                 let tile = world.tiles.get((x, y)).unwrap();
 
                 let size = (1.0 / 16.0)
-                    - (1.0 / (self.texture_atlas.size * self.texture_atlas.tile_size) as f32) * 2.0;
+                    - (1.0 / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32) * 2.0;
 
                 let offsetx = match tile.ty {
                     common::world::TileType::Empty => 0.0,
                     common::world::TileType::Floor => {
                         32.0 * ((1.0 / 16.0)
                             + (1.0
-                                / (self.texture_atlas.size * self.texture_atlas.tile_size) as f32))
+                                / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32))
                     }
                 };
 
