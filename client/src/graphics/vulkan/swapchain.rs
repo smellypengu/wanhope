@@ -105,7 +105,7 @@ impl Swapchain {
         let candidates = vec![
             ash::vk::Format::D32_SFLOAT,
             ash::vk::Format::D32_SFLOAT_S8_UINT,
-            ash::vk::Format::D32_SFLOAT_S8_UINT,
+            ash::vk::Format::D24_UNORM_S8_UINT,
         ];
 
         device.find_supported_format(
@@ -493,9 +493,11 @@ impl Swapchain {
         let present_mode = available_present_modes
             .iter()
             .map(|pm| *pm)
-            // .find(|available_present_mode| *available_present_mode == ash::vk::PresentModeKHR::MAILBOX)
+            .find(|available_present_mode| {
+                *available_present_mode == ash::vk::PresentModeKHR::MAILBOX
+            })
             // .find(|available_present_mode| *available_present_mode == ash::vk::PresentModeKHR::IMMEDIATE)
-            .find(|available_present_mode| *available_present_mode == ash::vk::PresentModeKHR::FIFO)
+            // .find(|available_present_mode| *available_present_mode == ash::vk::PresentModeKHR::FIFO)
             .unwrap_or_else(|| {
                 log::warn!("Could not find desired present mode, defaulting to FIFO");
                 ash::vk::PresentModeKHR::FIFO
@@ -545,8 +547,7 @@ impl Drop for Swapchain {
         log::debug!("Dropping vulkan swapchain");
 
         unsafe {
-            // TODO: figure out why this line causes the rest of the app not to be destroyed properly
-            // self.swapchain.destroy_swapchain(self.swapchain_khr, None);
+            self.swapchain.destroy_swapchain(self.swapchain_khr, None);
 
             self.depth_images
                 .iter()
