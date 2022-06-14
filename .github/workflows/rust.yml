@@ -19,5 +19,5 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
 
-      - name: Build
-        run: cargo build --release
+      - name: Build Server
+        run: cargo build --manifest-path server/Cargo.toml --release
