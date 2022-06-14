@@ -26,4 +26,3 @@ jobs:
         with:
           name: wanhope-server
           path: target/release/server
-
