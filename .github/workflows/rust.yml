@@ -22,7 +22,7 @@ jobs:
       - name: Build server
         run: cargo build --manifest-path server/Cargo.toml --release
       - name: Upload server artifact
-        uses: actions/artifacts@v2
+        uses: actions/upload-artifact@v2
         with:
           name: wanhope-server
           path: target/release/server
