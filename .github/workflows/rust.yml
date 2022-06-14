@@ -19,5 +19,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
 
-      - name: Build Server
+      - name: Build server
         run: cargo build --manifest-path server/Cargo.toml --release
+      - name: Upload server artifact
+        uses: actions/artifacts@v2
+        with:
+          name: wanhope-server
+          path: target/release/server
+
