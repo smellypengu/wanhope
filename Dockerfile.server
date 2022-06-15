@@ -1,5 +1,5 @@
 FROM gcr.io/distroless/cc
 
-COPY target/release/server .
+COPY target/release/server /
 
 CMD ["server"]
