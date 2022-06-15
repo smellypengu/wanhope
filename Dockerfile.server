@@ -2,4 +2,6 @@ FROM gcr.io/distroless/cc
 
 COPY target/release/server /
 
+EXPOSE 8080
+
 CMD ["./server"]

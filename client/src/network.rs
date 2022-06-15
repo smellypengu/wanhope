@@ -4,6 +4,7 @@ use std::{
 };
 
 pub struct Network {
+    pub ip: String,
     socket: Option<UdpSocket>,
 
     pub connected: bool,
@@ -16,6 +17,7 @@ pub struct Network {
 impl Network {
     pub fn new() -> Self {
         Self {
+            ip: "127.0.0.1:8080".to_string(),
             socket: None,
 
             connected: false,
@@ -29,7 +31,8 @@ impl Network {
     pub fn join(&mut self) -> anyhow::Result<(), NetworkError> {
         if !self.connected {
             if self.username != "".to_string() {
-                let remote_addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+                let remote_addr: SocketAddr = self.ip.parse().unwrap();
+                log::info!("{}", remote_addr);
 
                 let local_addr: SocketAddr = if remote_addr.is_ipv4() {
                     "0.0.0.0:0"

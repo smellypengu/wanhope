@@ -98,6 +98,11 @@ impl EGui {
 
                     if !network.connected {
                         ui.horizontal(|ui| {
+                            ui.label("IP: ");
+                            ui.text_edit_singleline(&mut network.ip);
+                        });
+
+                        ui.horizontal(|ui| {
                             ui.label("Username: ");
                             ui.text_edit_singleline(&mut network.username);
                         });
