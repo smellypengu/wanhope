@@ -35,3 +35,8 @@ jobs:
           file: Dockerfile.server
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/wanhope-server:latest
+      - name: Upload server artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: wanhope-server
+          path: target/release/server
