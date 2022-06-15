@@ -32,7 +32,6 @@ impl Network {
         if !self.connected {
             if self.username != "".to_string() {
                 let remote_addr: SocketAddr = self.ip.parse().unwrap();
-                log::info!("{}", remote_addr);
 
                 let local_addr: SocketAddr = if remote_addr.is_ipv4() {
                     "0.0.0.0:0"
