@@ -1,6 +1,6 @@
 FROM gcr.io/distroless/cc
 
-RUN useradd -u 8877 wanhope
+RUN useradd -s /bin/bash -u 8877 wanhope
 USER wanhope
 
 COPY target/release/server /
