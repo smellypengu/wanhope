@@ -1,6 +1,6 @@
 FROM gcr.io/distroless/cc
 
-USER nonroot:nonroot
+USER 1000
 
 COPY target/release/server /
 
