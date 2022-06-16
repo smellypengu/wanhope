@@ -111,13 +111,16 @@ impl EGui {
                             match network.join() {
                                 Ok(_) => {}
                                 Err(err) => {
-                                    ui.label(format!("Failed to join server: {}", err));
+                                    ui.colored_label(
+                                        egui::Color32::RED,
+                                        format!("Failed to join server: {}", err),
+                                    );
                                 }
                             }
                         };
                     } else {
                         ui.label(format!(
-                            "Connected to {} as {}",
+                            "Connected to {} as id {}",
                             network.server_ip().unwrap(),
                             network.client_id.unwrap(),
                         ));

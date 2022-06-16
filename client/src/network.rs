@@ -31,46 +31,49 @@ impl Network {
     pub fn join(&mut self) -> anyhow::Result<(), NetworkError> {
         if !self.connected {
             if self.username != "".to_string() {
-                let remote_addr: SocketAddr = self.ip.parse().unwrap();
+                match self.ip.parse::<SocketAddr>() {
+                    Ok(remote_addr) => {
+                        let local_addr: SocketAddr = if remote_addr.is_ipv4() {
+                            "0.0.0.0:0"
+                        } else {
+                            "[::]:0"
+                        }
+                        .parse()
+                        .unwrap();
 
-                let local_addr: SocketAddr = if remote_addr.is_ipv4() {
-                    "0.0.0.0:0"
-                } else {
-                    "[::]:0"
-                }
-                .parse()
-                .unwrap();
+                        self.socket = UdpSocket::bind(local_addr).ok();
 
-                self.socket = UdpSocket::bind(local_addr).ok();
+                        if let Some(socket) = &self.socket {
+                            socket.connect(remote_addr)?;
 
-                if let Some(socket) = &self.socket {
-                    socket.connect(remote_addr)?;
+                            // register as client in server
 
-                    // register as client in server
+                            let mut send = vec![common::ClientPacket::Join as u8];
+                            send.extend(&mut self.username.as_bytes().iter().copied());
 
-                    let mut send = vec![common::ClientPacket::Join as u8];
-                    send.extend(&mut self.username.as_bytes().iter().copied());
+                            socket.send(&send)?;
 
-                    socket.send(&send)?;
+                            let mut response = vec![0u8; 2];
+                            let len = socket.recv(&mut response)?;
 
-                    let mut response = vec![0u8; 2];
-                    let len = socket.recv(&mut response)?;
+                            let join_result = common::ServerPacket::try_from(response[0]).unwrap();
 
-                    let join_result = common::ServerPacket::try_from(response[0]).unwrap();
+                            match join_result {
+                                common::ServerPacket::JoinResult => {
+                                    if len > 1 as usize {
+                                        println!("user id: {}", response[1]);
 
-                    match join_result {
-                        common::ServerPacket::JoinResult => {
-                            if len > 1 as usize {
-                                println!("user id: {}", response[1]);
-
-                                self.connected = true;
-                                self.client_id = Some(response[1]);
-                            } else {
-                                log::info!("Server did not let us in");
+                                        self.connected = true;
+                                        self.client_id = Some(response[1]);
+                                    } else {
+                                        log::info!("Server did not let us in");
+                                    }
+                                }
+                                _ => {}
                             }
                         }
-                        _ => {}
                     }
+                    Err(_) => return Err(NetworkError::InvalidIP),
                 }
             } else {
                 return Err(NetworkError::EmptyUsername);
@@ -185,8 +188,10 @@ impl Network {
 
 #[derive(thiserror::Error, Debug)]
 pub enum NetworkError {
-    #[error("")]
-    NetworkError(#[from] io::Error),
     #[error("Username is empty")]
     EmptyUsername,
+    #[error("Invalid IP")]
+    InvalidIP,
+    #[error("")]
+    NetworkError(#[from] io::Error),
 }
