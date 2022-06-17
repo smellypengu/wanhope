@@ -13,7 +13,7 @@ pub struct Player {
     pub username: String,
 }
 
-#[derive(num_enum::TryFromPrimitive)]
+#[derive(Clone, Copy, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum ClientPacket {
     Join,
@@ -23,7 +23,7 @@ pub enum ClientPacket {
     WorldClick,
 }
 
-#[derive(num_enum::TryFromPrimitive)]
+#[derive(Clone, Copy, num_enum::TryFromPrimitive)]
 #[repr(u8)]
 pub enum ServerPacket {
     JoinResult,

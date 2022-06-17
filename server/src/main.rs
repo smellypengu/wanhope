@@ -1,10 +1,6 @@
 use std::{env, net::SocketAddr, sync::Arc};
 
-use tokio::{
-    net::UdpSocket,
-    sync::{mpsc, Mutex},
-    time,
-};
+use tokio::{net::UdpSocket, sync::Mutex, time};
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 
@@ -43,17 +39,9 @@ async fn main() -> crate::Result<()> {
     let socket = UdpSocket::bind(&addr).await?;
     println!("Listening on: {}", socket.local_addr()?);
 
-    let r = Arc::new(socket);
-    let s = r.clone();
+    let s = Arc::new(socket);
+    let s1 = s.clone();
     let s2 = s.clone();
-
-    let (tx, mut rx) = mpsc::channel::<(SocketAddr, common::ServerPacket, Vec<u8>)>(1_000);
-
-    tokio::spawn(async move {
-        while let Some((addr, packet, data)) = rx.recv().await {
-            send(&s, addr, packet, data).await.unwrap();
-        }
-    });
 
     let clients2 = clients.clone();
 
@@ -61,7 +49,7 @@ async fn main() -> crate::Result<()> {
         loop {
             let mut buf = [0; 1024];
 
-            let (len, addr) = r.recv_from(&mut buf).await.unwrap();
+            let (len, addr) = s.recv_from(&mut buf).await.unwrap();
             log::debug!("{} bytes received from {}", len, addr);
 
             match common::ClientPacket::try_from(buf[0]).unwrap() {
@@ -78,14 +66,14 @@ async fn main() -> crate::Result<()> {
                     if slot != -1 {
                         log::info!("client will be assigned to slot: {}", slot);
 
-                        if tx
-                            .send((addr, common::ServerPacket::JoinResult, vec![slot as u8]))
-                            .await
-                            .is_err()
-                        {
-                            // TODO: handle better
-                            log::warn!("Failed to send");
-                        }
+                        send(
+                            &s1,
+                            addr,
+                            common::ServerPacket::JoinResult,
+                            vec![slot as u8],
+                        )
+                        .await
+                        .unwrap();
 
                         let split = buf.split_at(1);
 
@@ -94,7 +82,9 @@ async fn main() -> crate::Result<()> {
                             .trim_matches(char::from(0))
                             .to_string();
 
-                        clients2.lock().await[slot as usize] = Some(Client {
+                        let c = &mut clients2.lock().await;
+
+                        c[slot as usize] = Some(Client {
                             addr,
                             last_heard: 0.0,
                         });
@@ -103,24 +93,14 @@ async fn main() -> crate::Result<()> {
                             Some(common::world::Player { username });
 
                         // inform all other clients that a client joined the server
-                        for i in 0..MAX_CLIENTS {
-                            if i != slot as usize {
-                                if let Some(client) = &clients2.lock().await[i] {
-                                    if tx
-                                        .send((
-                                            client.addr,
-                                            common::ServerPacket::ClientJoin,
-                                            Vec::new(),
-                                        ))
-                                        .await
-                                        .is_err()
-                                    {
-                                        // TODO: handle better
-                                        log::warn!("Failed to send");
-                                    }
-                                }
-                            }
-                        }
+                        broadcast(
+                            &s,
+                            Some(slot as u8),
+                            c,
+                            common::ServerPacket::ClientJoin,
+                            Vec::new(),
+                        )
+                        .await;
                     }
                 }
                 common::ClientPacket::Leave => {
@@ -133,24 +113,14 @@ async fn main() -> crate::Result<()> {
                     world.lock().await.players[client_id as usize] = None;
 
                     // inform all other clients that a client left the server
-                    for i in 0..MAX_CLIENTS {
-                        if i != client_id as usize {
-                            if let Some(client) = &c[i] {
-                                if tx
-                                    .send((
-                                        client.addr,
-                                        common::ServerPacket::ClientLeave,
-                                        Vec::new(),
-                                    ))
-                                    .await
-                                    .is_err()
-                                {
-                                    // TODO: handle better
-                                    log::warn!("Failed to send");
-                                }
-                            }
-                        }
-                    }
+                    broadcast(
+                        &s,
+                        Some(client_id),
+                        &c,
+                        common::ServerPacket::ClientLeave,
+                        Vec::new(),
+                    )
+                    .await;
                 }
                 common::ClientPacket::KeepAlive => {
                     let client_id = buf[1];
@@ -177,22 +147,14 @@ async fn main() -> crate::Result<()> {
                                     + std::str::from_utf8(split.1).unwrap();
 
                                 // send chat message to all clients
-                                for i in 0..MAX_CLIENTS {
-                                    if let Some(client) = &c[i] {
-                                        if tx
-                                            .send((
-                                                client.addr,
-                                                common::ServerPacket::Chat,
-                                                message.as_bytes().to_vec(),
-                                            ))
-                                            .await
-                                            .is_err()
-                                        {
-                                            // TODO: handle better
-                                            log::warn!("Failed to send");
-                                        }
-                                    }
-                                }
+                                broadcast(
+                                    &s,
+                                    None,
+                                    &c,
+                                    common::ServerPacket::Chat,
+                                    message.as_bytes().to_vec(),
+                                )
+                                .await;
                             }
                         }
                     }
@@ -242,29 +204,21 @@ async fn main() -> crate::Result<()> {
                 if client.last_heard > CLIENT_TIMEOUT {
                     log::warn!("client {} timed out", client_id);
 
-                    clients3.lock().await[client_id] = None;
+                    let c = &mut clients3.lock().await;
+
+                    c[client_id] = None;
 
                     world2.lock().await.players[client_id] = None;
 
                     // inform all other clients that a client left the server
-                    for i in 0..MAX_CLIENTS {
-                        if i != client_id as usize {
-                            if let Some(client) = &clients3.lock().await[i] {
-                                if send(
-                                    &s2,
-                                    client.addr,
-                                    common::ServerPacket::ClientLeave,
-                                    Vec::new(),
-                                )
-                                .await
-                                .is_err()
-                                {
-                                    // TODO: handle better
-                                    log::warn!("Failed to send");
-                                }
-                            }
-                        }
-                    }
+                    broadcast(
+                        &s2,
+                        Some(client_id as u8),
+                        &c,
+                        common::ServerPacket::ClientLeave,
+                        Vec::new(),
+                    )
+                    .await;
                 }
             }
         }
@@ -294,6 +248,32 @@ fn verify_client(addr1: SocketAddr, addr2: SocketAddr) -> bool {
 
     log::warn!("message from {} expected {}", addr1, addr2);
     return false;
+}
+
+async fn broadcast(
+    socket: &UdpSocket,
+    client_id: Option<u8>,
+    clients: &Vec<Option<Client>>,
+    packet: common::ServerPacket,
+    data: Vec<u8>,
+) {
+    for i in 0..MAX_CLIENTS {
+        if let Some(client_id) = client_id {
+            if i == client_id as usize {
+                continue;
+            }
+        }
+
+        if let Some(client) = &clients[i] {
+            if send(&socket, client.addr, packet, data.clone())
+                .await
+                .is_err()
+            {
+                // TODO: handle better
+                log::warn!("Failed to send");
+            }
+        }
+    }
 }
 
 async fn send(
