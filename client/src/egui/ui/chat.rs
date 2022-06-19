@@ -1,3 +1,5 @@
+use egui::InnerResponse;
+
 use crate::{
     app::AppError,
     egui::{Props, Ui, View},
@@ -32,7 +34,7 @@ impl Ui for Chat {
             .open(open)
             .resizable(false)
             .show(ctx, |ui| -> anyhow::Result<(), AppError> {
-                Ok(self.ui(ui, props)?)
+                self.ui(ui, props)
             })
     }
 

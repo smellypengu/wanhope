@@ -77,10 +77,12 @@ impl EGui {
         command_buffer: ash::vk::CommandBuffer,
         network: &mut Network,
         world: &Option<common::world::World>,
-    ) -> anyhow::Result<(), AppError> {
+    ) -> anyhow::Result<bool, AppError> {
         self.egui_integration.begin_frame(window);
 
-        egui::TopBottomPanel::top("top_panel").show(
+        let mut hovered = false;
+
+        let r = egui::TopBottomPanel::top("top_panel").show(
             &self.egui_integration.egui_ctx.clone(),
             |ui| {
                 egui::menu::bar(ui, |ui| {
@@ -89,76 +91,84 @@ impl EGui {
             },
         );
 
-        egui::SidePanel::left("side_panel")
-            .show(
-                &self.egui_integration.egui_ctx.clone(),
-                |ui| -> anyhow::Result<(), AppError> {
-                    ui.heading("Wanhope");
-                    ui.separator();
+        if r.response.hovered() {
+            hovered = true;
+        }
 
-                    if !network.connected {
-                        ui.horizontal(|ui| {
-                            ui.label("IP: ");
-                            ui.text_edit_singleline(&mut network.ip);
-                        });
+        let r = egui::SidePanel::left("side_panel").show(
+            &self.egui_integration.egui_ctx.clone(),
+            |ui| -> anyhow::Result<(), AppError> {
+                ui.heading("Wanhope");
+                ui.separator();
 
-                        ui.horizontal(|ui| {
-                            ui.label("Username: ");
-                            ui.text_edit_singleline(&mut network.username);
-                        });
+                if !network.connected {
+                    ui.horizontal(|ui| {
+                        ui.label("IP: ");
+                        ui.text_edit_singleline(&mut network.ip);
+                    });
 
-                        if ui.button("Connect").clicked() {
-                            match network.join() {
-                                Ok(_) => {}
-                                Err(err) => {
-                                    ui.colored_label(
-                                        egui::Color32::RED,
-                                        format!("Failed to join server: {}", err),
-                                    );
-                                }
-                            }
-                        };
-                    } else {
-                        ui.label(format!(
-                            "Connected to {} as id {}",
-                            network.server_ip().unwrap(),
-                            network.client_id.unwrap(),
-                        ));
+                    ui.horizontal(|ui| {
+                        ui.label("Username: ");
+                        ui.text_edit_singleline(&mut network.username);
+                    });
 
-                        ui.label("Players:");
-                        if let Some(world) = world {
-                            for player in &world.players {
-                                if let Some(player) = player {
-                                    ui.label(format!("{}", player.username));
-                                }
+                    if ui.button("Connect").clicked() {
+                        match network.join() {
+                            Ok(_) => {}
+                            Err(err) => {
+                                ui.colored_label(
+                                    egui::Color32::RED,
+                                    format!("Failed to join server: {}", err),
+                                );
                             }
                         }
+                    };
+                } else {
+                    ui.label(format!(
+                        "Connected to {} as id {}",
+                        network.server_ip().unwrap(),
+                        network.client_id.unwrap(),
+                    ));
 
-                        ui.separator();
-
-                        if ui.button("Leave").clicked() {
-                            match network.leave() {
-                                Ok(_) => {
-                                    self.set_open("Chat", false);
-                                }
-                                Err(_) => {
-                                    // TODO: handle better?
-                                    log::warn!("Failed to leave server");
-                                }
+                    ui.label("Players:");
+                    if let Some(world) = world {
+                        for player in &world.players {
+                            if let Some(player) = player {
+                                ui.label(format!("{}", player.username));
                             }
                         }
-
-                        if ui.button("Chat").clicked() {
-                            self.toggle_open("Chat");
-                        };
                     }
 
                     ui.separator();
 
-                    Ok(())
-                },
-            )
-            .inner?;
+                    if ui.button("Leave").clicked() {
+                        match network.leave() {
+                            Ok(_) => {
+                                self.set_open("Chat", false);
+                            }
+                            Err(_) => {
+                                // TODO: handle better?
+                                log::warn!("Failed to leave server");
+                            }
+                        }
+                    }
+
+                    if ui.button("Chat").clicked() {
+                        self.toggle_open("Chat");
+                    };
+                }
+
+                ui.separator();
+
+                Ok(())
+            },
+        );
+
+        r.inner?;
+
+        if r.response.hovered() {
+            hovered = true;
+        }
 
         let props = Props { network: &network };
 
@@ -170,6 +180,10 @@ impl EGui {
                 &mut is_open,
                 &props,
             ) {
+                if r.response.hovered() {
+                    hovered = true;
+                }
+
                 match r.inner {
                     Some(inner) => inner?,
                     None => {}
@@ -182,7 +196,7 @@ impl EGui {
         self.egui_integration
             .paint(command_buffer, renderer.image_index())?;
 
-        Ok(())
+        Ok(hovered)
     }
 
     pub unsafe fn resize(

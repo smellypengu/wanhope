@@ -25,6 +25,7 @@ pub struct App {
     renderer: Renderer,
 
     egui: EGui,
+    egui_hovered: bool,
 
     global_pool: Rc<DescriptorPool>,
     global_set_layout: Rc<DescriptorSetLayout>,
@@ -184,6 +185,7 @@ impl App {
             renderer,
 
             egui,
+            egui_hovered: false,
 
             global_pool,
             global_set_layout,
@@ -349,46 +351,48 @@ impl App {
         button: winit::event::MouseButton,
     ) -> anyhow::Result<(), AppError> {
         if let Some(world) = &self.world {
-            if state == winit::event::ElementState::Pressed
-                && button == winit::event::MouseButton::Left
+            if self.egui_hovered
+                && state != winit::event::ElementState::Pressed
+                && button != winit::event::MouseButton::Left
             {
-                if let Some(cursor_position) = self.window.cursor_position() {
-                    if let Some(ray) = crate::graphics::Ray::from_screenspace(
-                        cursor_position,
-                        glam::vec2(
-                            self.window.inner().inner_size().width as f32,
-                            self.window.inner().inner_size().height as f32,
-                        ),
-                        self.camera.as_ref().unwrap(),
-                    ) {
-                        let plane = crate::graphics::Plane {
-                            center: glam::Vec3::ZERO,
-                            normal: glam::Vec3::Y,
-                        };
+                return Ok(());
+            }
 
-                        if let Some(distance) = plane.intersect(&ray) {
-                            let point = ray.origin + ray.dir * distance;
+            if let Some(cursor_position) = self.window.cursor_position() {
+                if let Some(ray) = crate::graphics::Ray::from_screenspace(
+                    cursor_position,
+                    glam::vec2(
+                        self.window.inner().inner_size().width as f32,
+                        self.window.inner().inner_size().height as f32,
+                    ),
+                    self.camera.as_ref().unwrap(),
+                ) {
+                    let plane = crate::graphics::Plane {
+                        center: glam::Vec3::ZERO,
+                        normal: glam::Vec3::Y,
+                    };
 
-                            let position =
-                                (glam::vec2((point.x - 0.5) / 10.0, (point.z + 0.5) / 10.0) * 10.0)
-                                    .round();
+                    if let Some(distance) = plane.intersect(&ray) {
+                        let point = ray.origin + ray.dir * distance;
 
-                            let p = position - glam::Vec2::Y;
+                        let position = (glam::vec2((point.x - 0.5) / 10.0, (point.z + 0.5) / 10.0)
+                            * 10.0)
+                            .round();
 
-                            if p.x >= 0.0
-                                && p.y >= 0.0
-                                && p.x < world.width as f32
-                                && p.y < world.height as f32
-                            {
-                                self.network.send_client_world_click(p.abs())?;
+                        let p = position - glam::Vec2::Y;
 
-                                self.game_objects
-                                    .get_mut(&self.select_id)
-                                    .unwrap()
-                                    .transform
-                                    .translation =
-                                    glam::vec3(position.x + 0.5, 0.0, position.y - 0.5);
-                            }
+                        if p.x >= 0.0
+                            && p.y >= 0.0
+                            && p.x < world.width as f32
+                            && p.y < world.height as f32
+                        {
+                            self.network.send_client_world_click(p.abs())?;
+
+                            self.game_objects
+                                .get_mut(&self.select_id)
+                                .unwrap()
+                                .transform
+                                .translation = glam::vec3(position.x + 0.5, 0.0, position.y - 0.5);
                         }
                     }
                 }
@@ -457,7 +461,7 @@ impl App {
 
                     self.renderer.end_swapchain_render_pass(command_buffer);
 
-                    self.egui.render(
+                    self.egui_hovered = self.egui.render(
                         &self.window,
                         &self.renderer,
                         command_buffer,
@@ -502,8 +506,7 @@ impl App {
                     common::world::TileType::Empty => 0.0,
                     common::world::TileType::Floor => {
                         32.0 * ((1.0 / 16.0)
-                            + (1.0
-                                / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32))
+                            + (1.0 / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32))
                     }
                 };
 
