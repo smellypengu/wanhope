@@ -352,8 +352,8 @@ impl App {
     ) -> anyhow::Result<(), AppError> {
         if let Some(world) = &self.world {
             if self.egui_hovered
-                && state != winit::event::ElementState::Pressed
-                && button != winit::event::MouseButton::Left
+                || state != winit::event::ElementState::Pressed
+                || button != winit::event::MouseButton::Left
             {
                 return Ok(());
             }
@@ -503,8 +503,8 @@ impl App {
                     - (1.0 / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32) * 2.0;
 
                 let offsetx = match tile.ty {
-                    common::world::TileType::Empty => 0.0,
-                    common::world::TileType::Floor => {
+                    common::world::TileType::Grass => 0.0,
+                    common::world::TileType::Sand => {
                         32.0 * ((1.0 / 16.0)
                             + (1.0 / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32))
                     }

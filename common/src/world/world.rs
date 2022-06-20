@@ -1,4 +1,8 @@
 use bincode::{Decode, Encode};
+use noise::{
+    utils::{NoiseMapBuilder, PlaneMapBuilder},
+    Perlin, Seedable,
+};
 
 use super::{Tile, TileType};
 
@@ -23,12 +27,26 @@ impl World {
             .take(max_players)
             .collect::<Vec<_>>();
 
-        let tiles = ndarray::Array2::from_elem(
+        let mut tiles = ndarray::Array2::from_elem(
             (width, height),
             Tile {
-                ty: TileType::Empty,
+                ty: TileType::Grass,
             },
         );
+
+        let perlin = Perlin::default().set_seed(rand::random());
+
+        let map = PlaneMapBuilder::new(&perlin)
+            .set_size(width, height)
+            .set_x_bounds(-0.5, 0.5)
+            .set_y_bounds(-0.5, 0.5)
+            .build();
+
+        for ((x, y), tile) in tiles.indexed_iter_mut() {
+            if map.get_value(x, y) > 0.5 {
+                tile.ty = TileType::Sand;
+            }
+        }
 
         Self {
             players,

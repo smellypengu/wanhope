@@ -23,7 +23,7 @@ async fn main() -> crate::Result<()> {
         .without_timestamps()
         .init()?;
 
-    let world = Arc::new(Mutex::new(common::world::World::new(MAX_CLIENTS, 10, 10)));
+    let world = Arc::new(Mutex::new(common::world::World::new(MAX_CLIENTS, 20, 20)));
     let world2 = world.clone();
 
     let clients = Arc::new(Mutex::new(
@@ -180,7 +180,7 @@ async fn main() -> crate::Result<()> {
                                     deserialized_position.y as usize,
                                 ))
                                 .unwrap()
-                                .ty = common::world::TileType::Floor;
+                                .ty = common::world::TileType::Grass;
 
                             // send a result?
                         }
