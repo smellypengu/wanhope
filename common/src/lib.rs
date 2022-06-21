@@ -27,8 +27,8 @@ pub enum ClientPacket {
 #[repr(u8)]
 pub enum ServerPacket {
     JoinResult,
-    ClientJoin,  // sent to all other clients when a client joins the server
+    ClientJoin,  // sent to all clients when a client joins the server
     ClientLeave, // sent to all other clients when a client leaves the server
     Chat,
-    GameState,
+    WorldModified,
 }

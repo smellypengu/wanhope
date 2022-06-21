@@ -28,7 +28,7 @@ impl Network {
         }
     }
 
-    pub fn join(&mut self) -> anyhow::Result<(), NetworkError> {
+    pub fn join(&mut self) -> anyhow::Result<Option<common::world::World>, NetworkError> {
         if !self.connected {
             if self.username != "".to_string() {
                 match self.ip.parse::<SocketAddr>() {
@@ -53,7 +53,7 @@ impl Network {
 
                             socket.send(&send)?;
 
-                            let mut response = vec![0u8; 2];
+                            let mut response = vec![0u8; 1_024];
                             let len = socket.recv(&mut response)?;
 
                             let join_result = common::ServerPacket::try_from(response[0]).unwrap();
@@ -61,10 +61,23 @@ impl Network {
                             match join_result {
                                 common::ServerPacket::JoinResult => {
                                     if len > 1 as usize {
-                                        println!("user id: {}", response[1]);
+                                        let split = response.split_at(2);
+
+                                        let user_id = split.0[1];
+
+                                        println!("user id: {}", user_id);
+
+                                        let world = bincode::decode_from_slice(
+                                            split.1,
+                                            bincode::config::standard(),
+                                        )
+                                        .unwrap()
+                                        .0;
 
                                         self.connected = true;
-                                        self.client_id = Some(response[1]);
+                                        self.client_id = Some(user_id);
+
+                                        return Ok(Some(world));
                                     } else {
                                         log::info!("Server did not let us in");
                                     }
@@ -80,7 +93,7 @@ impl Network {
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 
     pub fn leave(&mut self) -> anyhow::Result<(), NetworkError> {
@@ -123,7 +136,7 @@ impl Network {
                     Ok(len) => {
                         let x = data[..len].to_vec();
                         let message = common::ServerPacket::try_from(x[0]).ok();
-                        let payload = x.split_at(1).1.to_vec();
+                        let payload = x.split_first().unwrap().1.to_vec();
 
                         return Ok((message, payload));
                     }

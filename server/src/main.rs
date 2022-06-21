@@ -7,6 +7,24 @@ pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Debug)]
+pub struct State {
+    players: Vec<Option<common::world::Player>>,
+    world: common::world::World,
+}
+
+impl State {
+    pub fn new(max_players: usize, width: usize, height: usize) -> Self {
+        let players = std::iter::repeat_with(|| None)
+            .take(max_players)
+            .collect::<Vec<_>>();
+
+        let world = common::world::World::new(width, height);
+
+        Self { players, world }
+    }
+}
+
+#[derive(Debug)]
 struct Client {
     addr: SocketAddr,
     last_heard: f32,
@@ -23,8 +41,8 @@ async fn main() -> crate::Result<()> {
         .without_timestamps()
         .init()?;
 
-    let world = Arc::new(Mutex::new(common::world::World::new(MAX_CLIENTS, 20, 20)));
-    let world2 = world.clone();
+    let state = Arc::new(Mutex::new(State::new(MAX_CLIENTS, 20, 20)));
+    let state2 = state.clone();
 
     let clients = Arc::new(Mutex::new(
         std::iter::repeat_with(|| None)
@@ -40,8 +58,8 @@ async fn main() -> crate::Result<()> {
     println!("Listening on: {}", socket.local_addr()?);
 
     let s = Arc::new(socket);
-    let s1 = s.clone();
     let s2 = s.clone();
+    let s3 = s.clone();
 
     let clients2 = clients.clone();
 
@@ -66,16 +84,20 @@ async fn main() -> crate::Result<()> {
                     if slot != -1 {
                         log::info!("client will be assigned to slot: {}", slot);
 
-                        send(
-                            &s1,
-                            addr,
-                            common::ServerPacket::JoinResult,
-                            vec![slot as u8],
+                        let serialized_world = bincode::encode_to_vec(
+                            &state.lock().await.world,
+                            bincode::config::standard(),
                         )
-                        .await
                         .unwrap();
 
-                        let split = buf.split_at(1);
+                        let mut data = vec![slot as u8];
+                        data.extend(serialized_world.iter().copied());
+
+                        send(&s2, addr, common::ServerPacket::JoinResult, data)
+                            .await
+                            .unwrap();
+
+                        let split = buf.split_first().unwrap();
 
                         let username = std::str::from_utf8(split.1)
                             .unwrap()
@@ -89,16 +111,21 @@ async fn main() -> crate::Result<()> {
                             last_heard: 0.0,
                         });
 
-                        world.lock().await.players[slot as usize] =
+                        state.lock().await.players[slot as usize] =
                             Some(common::world::Player { username });
 
-                        // inform all other clients that a client joined the server
+                        // inform all clients that a client joined the server
+                        // sent to the new client aswell so they get the player list
                         broadcast(
                             &s,
-                            Some(slot as u8),
+                            None,
                             c,
                             common::ServerPacket::ClientJoin,
-                            Vec::new(),
+                            bincode::encode_to_vec(
+                                state.lock().await.players.clone(),
+                                bincode::config::standard(),
+                            )
+                            .unwrap(),
                         )
                         .await;
                     }
@@ -110,15 +137,19 @@ async fn main() -> crate::Result<()> {
 
                     c[client_id as usize] = None;
 
-                    world.lock().await.players[client_id as usize] = None;
+                    state.lock().await.players[client_id as usize] = None;
 
-                    // inform all other clients that a client left the server
+                    // inform all clients that a client left the server
                     broadcast(
                         &s,
                         Some(client_id),
                         &c,
                         common::ServerPacket::ClientLeave,
-                        Vec::new(),
+                        bincode::encode_to_vec(
+                            state.lock().await.players.clone(),
+                            bincode::config::standard(),
+                        )
+                        .unwrap(),
                     )
                     .await;
                 }
@@ -138,10 +169,10 @@ async fn main() -> crate::Result<()> {
 
                     if let Some(client) = &mut c[client_id as usize] {
                         if verify_client(addr, client.addr) {
-                            let split = buf.split_at(1);
+                            let split = buf.split_first().unwrap();
 
                             // should always be some
-                            if let Some(player) = &world.lock().await.players[client_id as usize] {
+                            if let Some(player) = &state.lock().await.players[client_id as usize] {
                                 let message = player.username.clone()
                                     + ": "
                                     + std::str::from_utf8(split.1).unwrap();
@@ -164,16 +195,19 @@ async fn main() -> crate::Result<()> {
 
                     let client_id = split.0[1];
 
-                    if let Some(client) = &mut clients2.lock().await[client_id as usize] {
+                    let c = &mut clients2.lock().await;
+
+                    if let Some(client) = &mut c[client_id as usize] {
                         if verify_client(addr, client.addr) {
                             let deserialized_position: common::Position =
                                 bincode::decode_from_slice(split.1, bincode::config::standard())
                                     .unwrap()
                                     .0;
 
-                            world
+                            state
                                 .lock()
                                 .await
+                                .world
                                 .tiles
                                 .get_mut((
                                     deserialized_position.x as usize,
@@ -182,7 +216,21 @@ async fn main() -> crate::Result<()> {
                                 .unwrap()
                                 .ty = common::world::TileType::Grass;
 
-                            // send a result?
+                            let serialized_world = bincode::encode_to_vec(
+                                &state.lock().await.world,
+                                bincode::config::standard(),
+                            )
+                            .unwrap();
+
+                            // send new world to all clients
+                            broadcast(
+                                &s,
+                                None,
+                                &c,
+                                common::ServerPacket::WorldModified,
+                                serialized_world.clone(),
+                            )
+                            .await;
                         }
                     }
                 }
@@ -208,34 +256,21 @@ async fn main() -> crate::Result<()> {
 
                     c[client_id] = None;
 
-                    world2.lock().await.players[client_id] = None;
+                    state2.lock().await.players[client_id] = None;
 
                     // inform all other clients that a client left the server
                     broadcast(
-                        &s2,
+                        &s3,
                         Some(client_id as u8),
                         &c,
                         common::ServerPacket::ClientLeave,
-                        Vec::new(),
+                        bincode::encode_to_vec(
+                            state2.lock().await.players.clone(),
+                            bincode::config::standard(),
+                        )?,
                     )
                     .await;
                 }
-            }
-        }
-
-        let serialized_world =
-            bincode::encode_to_vec(&*world2.lock().await, bincode::config::standard())?;
-
-        // probably not best practise to send the entire world each tick?
-        for client in clients3.lock().await.iter() {
-            if let Some(client) = client {
-                send(
-                    &s2,
-                    client.addr,
-                    common::ServerPacket::GameState,
-                    serialized_world.clone(),
-                )
-                .await?;
             }
         }
     }

@@ -52,6 +52,8 @@ pub struct App {
 
     network: Network,
 
+    players: Vec<Option<common::Player>>,
+
     world: Option<common::world::World>,
     previous_world_id: Option<u8>,
 }
@@ -212,6 +214,8 @@ impl App {
 
             network: Network::new(),
 
+            players: Vec::new(),
+
             world: None,
             previous_world_id: None,
         })
@@ -299,9 +303,19 @@ impl App {
             match server_message {
                 common::ServerPacket::ClientJoin => {
                     log::info!("a client joined the server!");
+
+                    self.players =
+                        bincode::decode_from_slice(&payload, bincode::config::standard())
+                            .unwrap()
+                            .0;
                 }
                 common::ServerPacket::ClientLeave => {
                     log::info!("a client left the server!");
+
+                    self.players =
+                        bincode::decode_from_slice(&payload, bincode::config::standard())
+                            .unwrap()
+                            .0;
                 }
                 common::ServerPacket::Chat => {
                     let message = std::str::from_utf8(&payload)
@@ -313,11 +327,13 @@ impl App {
                         chat.messages.push(message);
                     }
                 }
-                common::ServerPacket::GameState => {
+                common::ServerPacket::WorldModified => {
                     let world: common::world::World =
                         bincode::decode_from_slice(&payload, bincode::config::standard())
                             .unwrap()
                             .0;
+
+                    log::info!("test");
 
                     if let Some(previous_world) = &self.world {
                         if !world
@@ -331,9 +347,6 @@ impl App {
                                 self.create_world_game_object(&world, self.previous_world_id)?,
                             );
                         }
-                    } else {
-                        self.previous_world_id =
-                            Some(self.create_world_game_object(&world, self.previous_world_id)?);
                     }
 
                     self.world = Some(world);
@@ -461,13 +474,22 @@ impl App {
 
                     self.renderer.end_swapchain_render_pass(command_buffer);
 
-                    self.egui_hovered = self.egui.render(
+                    let r = self.egui.render(
                         &self.window,
                         &self.renderer,
                         command_buffer,
                         &mut self.network,
+                        &self.players,
                         &self.world,
                     )?;
+
+                    self.egui_hovered = r.0;
+
+                    if let Some(world) = r.1 {
+                        self.previous_world_id = Some(self.create_world_game_object(&world, None)?);
+
+                        self.world = Some(world);
+                    }
 
                     self.renderer.end_frame(&self.window)?;
                 }

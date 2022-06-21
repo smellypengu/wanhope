@@ -6,15 +6,13 @@ use noise::{
 
 use super::{Tile, TileType};
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct Player {
     pub username: String,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode)]
 pub struct World {
-    pub players: Vec<Option<Player>>,
-
     #[bincode(with_serde)]
     pub tiles: ndarray::Array2<Tile>,
     pub width: usize,
@@ -22,11 +20,7 @@ pub struct World {
 }
 
 impl World {
-    pub fn new(max_players: usize, width: usize, height: usize) -> Self {
-        let players = std::iter::repeat_with(|| None)
-            .take(max_players)
-            .collect::<Vec<_>>();
-
+    pub fn new(width: usize, height: usize) -> Self {
         let mut tiles = ndarray::Array2::from_elem(
             (width, height),
             Tile {
@@ -43,14 +37,12 @@ impl World {
             .build();
 
         for ((x, y), tile) in tiles.indexed_iter_mut() {
-            if map.get_value(x, y) > 0.5 {
+            if map.get_value(x, y) > 0.1 {
                 tile.ty = TileType::Sand;
             }
         }
 
         Self {
-            players,
-
             tiles,
             width,
             height,

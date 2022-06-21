@@ -76,11 +76,14 @@ impl EGui {
         renderer: &Renderer,
         command_buffer: ash::vk::CommandBuffer,
         network: &mut Network,
+        players: &Vec<Option<common::Player>>,
         world: &Option<common::world::World>,
-    ) -> anyhow::Result<bool, AppError> {
+    ) -> anyhow::Result<(bool, Option<common::world::World>), AppError> {
         self.egui_integration.begin_frame(window);
 
         let mut hovered = false;
+
+        let mut join_world = None;
 
         let r = egui::TopBottomPanel::top("top_panel").show(
             &self.egui_integration.egui_ctx.clone(),
@@ -114,7 +117,9 @@ impl EGui {
 
                     if ui.button("Connect").clicked() {
                         match network.join() {
-                            Ok(_) => {}
+                            Ok(world) => {
+                                join_world = world;
+                            }
                             Err(err) => {
                                 ui.colored_label(
                                     egui::Color32::RED,
@@ -131,8 +136,8 @@ impl EGui {
                     ));
 
                     ui.label("Players:");
-                    if let Some(world) = world {
-                        for player in &world.players {
+                    if world.is_some() {
+                        for player in players {
                             if let Some(player) = player {
                                 ui.label(format!("{}", player.username));
                             }
@@ -196,7 +201,7 @@ impl EGui {
         self.egui_integration
             .paint(command_buffer, renderer.image_index())?;
 
-        Ok(hovered)
+        Ok((hovered, join_world))
     }
 
     pub unsafe fn resize(
