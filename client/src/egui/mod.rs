@@ -8,7 +8,7 @@ use crate::{
         vulkan::{EGuiIntegration, Renderer},
         RenderError, Window,
     },
-    network::Network,
+    network::{Network, NetworkError},
 };
 
 pub struct Props<'a> {
@@ -38,6 +38,9 @@ pub struct EGui {
     pub uis: HashMap<String, Box<dyn Ui>>,
 
     open: BTreeSet<String>,
+
+    timer: u16,
+    err: Option<NetworkError>,
 }
 
 impl EGui {
@@ -63,6 +66,9 @@ impl EGui {
             uis,
 
             open: BTreeSet::new(),
+
+            timer: 0,
+            err: None,
         })
     }
 
@@ -116,15 +122,13 @@ impl EGui {
                     });
 
                     if ui.button("Connect").clicked() {
-                        match network.join() {
+                        match network.connect() {
                             Ok(world) => {
                                 join_world = world;
                             }
                             Err(err) => {
-                                ui.colored_label(
-                                    egui::Color32::RED,
-                                    format!("Failed to join server: {}", err),
-                                );
+                                self.timer = 500;
+                                self.err = Some(err);
                             }
                         }
                     };
@@ -161,6 +165,15 @@ impl EGui {
                     if ui.button("Chat").clicked() {
                         self.toggle_open("Chat");
                     };
+                }
+
+                if self.timer > 0 {
+                    ui.separator();
+
+                    ui.colored_label(
+                        egui::Color32::RED,
+                        format!("Failed to join server: {}", self.err.as_ref().unwrap()),
+                    );
                 }
 
                 ui.separator();
@@ -200,6 +213,14 @@ impl EGui {
 
         self.egui_integration
             .paint(command_buffer, renderer.image_index())?;
+
+        if self.timer > 0 {
+            self.timer = self.timer - 1;
+
+            if self.timer == 0 {
+                self.err = None;
+            }
+        }
 
         Ok((hovered, join_world))
     }

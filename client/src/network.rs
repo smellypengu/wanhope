@@ -28,7 +28,7 @@ impl Network {
         }
     }
 
-    pub fn join(&mut self) -> anyhow::Result<Option<common::world::World>, NetworkError> {
+    pub fn connect(&mut self) -> anyhow::Result<Option<common::world::World>, NetworkError> {
         if !self.connected {
             if self.username != "".to_string() {
                 match self.ip.parse::<SocketAddr>() {
@@ -205,6 +205,6 @@ pub enum NetworkError {
     EmptyUsername,
     #[error("Invalid IP")]
     InvalidIP,
-    #[error("")]
+    #[error("IO error")]
     NetworkError(#[from] io::Error),
 }
