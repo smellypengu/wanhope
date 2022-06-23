@@ -13,12 +13,12 @@ pub struct State {
 }
 
 impl State {
-    pub fn new(max_players: usize, width: usize, height: usize) -> Self {
+    pub fn new() -> Self {
         let players = std::iter::repeat_with(|| None)
-            .take(max_players)
+            .take(MAX_CLIENTS)
             .collect::<Vec<_>>();
 
-        let world = common::world::World::new(width, height);
+        let world = common::world::World::new(2, 2);
 
         Self { players, world }
     }
@@ -41,7 +41,7 @@ async fn main() -> crate::Result<()> {
         .without_timestamps()
         .init()?;
 
-    let state = Arc::new(Mutex::new(State::new(MAX_CLIENTS, 20, 20)));
+    let state = Arc::new(Mutex::new(State::new()));
     let state2 = state.clone();
 
     let clients = Arc::new(Mutex::new(
@@ -200,24 +200,47 @@ async fn main() -> crate::Result<()> {
                     if let Some(client) = &mut c[client_id as usize] {
                         if verify_client(addr, client.addr) {
                             let deserialized_position: common::Position =
-                                bincode::decode_from_slice(split.1, bincode::config::standard())
-                                    .unwrap()
-                                    .0;
+                                bincode::serde::decode_from_slice(
+                                    split.1,
+                                    bincode::config::standard(),
+                                )
+                                .unwrap()
+                                .0;
+
+                            let chunk_position = common::Position {
+                                x: deserialized_position.x / common::world::CHUNK_SIZE,
+                                y: deserialized_position.y / common::world::CHUNK_SIZE,
+                            };
+
+                            let tile_chunk_position = common::Position {
+                                x: deserialized_position.x
+                                    - common::world::CHUNK_SIZE
+                                        * (deserialized_position.x / common::world::CHUNK_SIZE),
+                                y: deserialized_position.y
+                                    - common::world::CHUNK_SIZE
+                                        * (deserialized_position.y / common::world::CHUNK_SIZE),
+                            };
 
                             state
                                 .lock()
                                 .await
                                 .world
-                                .tiles
-                                .get_mut((
-                                    deserialized_position.x as usize,
-                                    deserialized_position.y as usize,
-                                ))
+                                .chunks
+                                .get_mut((chunk_position.x, chunk_position.y))
                                 .unwrap()
-                                .ty = common::world::TileType::Grass;
+                                .tiles
+                                .get_mut((tile_chunk_position.x, tile_chunk_position.y))
+                                .unwrap()
+                                .ty = common::world::TileType::Sand;
 
-                            let serialized_world = bincode::encode_to_vec(
-                                &state.lock().await.world,
+                            let serialized_chunk = bincode::serde::encode_to_vec(
+                                &state
+                                    .lock()
+                                    .await
+                                    .world
+                                    .chunks
+                                    .get((chunk_position.x, chunk_position.y))
+                                    .unwrap(),
                                 bincode::config::standard(),
                             )
                             .unwrap();
@@ -227,8 +250,8 @@ async fn main() -> crate::Result<()> {
                                 &s,
                                 None,
                                 &c,
-                                common::ServerPacket::WorldModified,
-                                serialized_world.clone(),
+                                common::ServerPacket::ChunkModified,
+                                serialized_chunk,
                             )
                             .await;
                         }

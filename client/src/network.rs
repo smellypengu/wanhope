@@ -174,12 +174,12 @@ impl Network {
                 ];
 
                 let p = common::Position {
-                    x: position.x,
-                    y: position.y,
+                    x: position.x as usize,
+                    y: position.y as usize,
                 };
 
                 send.extend(
-                    &mut bincode::encode_to_vec(p, bincode::config::standard())
+                    &mut bincode::serde::encode_to_vec(p, bincode::config::standard())
                         .unwrap()
                         .iter()
                         .copied(),

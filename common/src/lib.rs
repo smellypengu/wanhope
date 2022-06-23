@@ -1,11 +1,12 @@
 use bincode::{Decode, Encode};
+use serde::{Deserialize, Serialize};
 
 pub mod world;
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Position {
-    pub x: f32,
-    pub y: f32,
+    pub x: usize,
+    pub y: usize,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -30,5 +31,5 @@ pub enum ServerPacket {
     ClientJoin,  // sent to all clients when a client joins the server
     ClientLeave, // sent to all other clients when a client leaves the server
     Chat,
-    WorldModified,
+    ChunkModified,
 }

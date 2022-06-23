@@ -55,7 +55,8 @@ pub struct App {
     players: Vec<Option<common::Player>>,
 
     world: Option<common::world::World>,
-    previous_world_id: Option<u8>,
+
+    chunk_position_to_ids: HashMap<common::Position, u8>,
 }
 
 impl App {
@@ -217,7 +218,8 @@ impl App {
             players: Vec::new(),
 
             world: None,
-            previous_world_id: None,
+
+            chunk_position_to_ids: HashMap::new(),
         })
     }
 
@@ -327,29 +329,30 @@ impl App {
                         chat.messages.push(message);
                     }
                 }
-                common::ServerPacket::WorldModified => {
-                    let world: common::world::World =
-                        bincode::decode_from_slice(&payload, bincode::config::standard())
+                common::ServerPacket::ChunkModified => {
+                    let chunk: common::world::Chunk =
+                        bincode::serde::decode_from_slice(&payload, bincode::config::standard())
                             .unwrap()
                             .0;
 
-                    log::info!("test");
+                    // should always be some
+                    if let Some(world) = &mut self.world {
+                        world
+                            .chunks
+                            .get_mut((chunk.position.x, chunk.position.y))
+                            .unwrap()
+                            .tiles = chunk.tiles.clone(); // hmmmm
 
-                    if let Some(previous_world) = &self.world {
-                        if !world
-                            .tiles
-                            .iter()
-                            .zip(previous_world.tiles.iter())
-                            .all(|(tile_a, tile_b)| tile_a.ty == tile_b.ty)
-                        {
-                            log::info!("recreating world game object");
-                            self.previous_world_id = Some(
-                                self.create_world_game_object(&world, self.previous_world_id)?,
-                            );
+                        log::info!("recreating chunk game object");
+
+                        if let Some(id) = self.chunk_position_to_ids.remove(&chunk.position) {
+                            self.game_objects.remove(&id);
                         }
-                    }
 
-                    self.world = Some(world);
+                        let id = self.create_chunk_game_object(&chunk)?;
+
+                        self.chunk_position_to_ids.insert(chunk.position, id);
+                    }
                 }
                 _ => {}
             }
@@ -396,8 +399,8 @@ impl App {
 
                         if p.x >= 0.0
                             && p.y >= 0.0
-                            && p.x < world.width as f32
-                            && p.y < world.height as f32
+                            && p.x < (world.width * common::world::CHUNK_SIZE) as f32
+                            && p.y < (world.height * common::world::CHUNK_SIZE) as f32
                         {
                             self.network.send_client_world_click(p.abs())?;
 
@@ -486,7 +489,7 @@ impl App {
                     self.egui_hovered = r.0;
 
                     if let Some(world) = r.1 {
-                        self.previous_world_id = Some(self.create_world_game_object(&world, None)?);
+                        self.create_chunk_game_objects(&world)?;
 
                         self.world = Some(world);
                     }
@@ -510,21 +513,37 @@ impl App {
         Ok(())
     }
 
-    fn create_world_game_object(
+    fn create_chunk_game_objects(
         &mut self,
         world: &common::world::World,
-        previous_world_id: Option<u8>,
+    ) -> anyhow::Result<(), AppError> {
+        for x in 0..world.width {
+            for y in 0..world.height {
+                let chunk = world.chunks.get((x, y)).unwrap();
+
+                let id = self.create_chunk_game_object(chunk)?;
+
+                self.chunk_position_to_ids.insert(chunk.position, id);
+            }
+        }
+
+        Ok(())
+    }
+
+    fn create_chunk_game_object(
+        &mut self,
+        chunk: &common::world::Chunk,
     ) -> anyhow::Result<u8, AppError> {
         let mut vertices: Vec<Vertex> = Vec::new();
 
-        for x in 0..world.width {
-            for y in 0..world.height {
-                let tile = world.tiles.get((x, y)).unwrap();
+        for chunk_x in 0..common::world::CHUNK_SIZE {
+            for chunk_y in 0..common::world::CHUNK_SIZE {
+                let tile = chunk.tiles.get((chunk_x, chunk_y)).unwrap();
 
                 let size = (1.0 / 16.0)
                     - (1.0 / (self.tile_atlas.size * self.tile_atlas.tile_size) as f32) * 2.0;
 
-                let offsetx = match tile.ty {
+                let offset_x = match tile.ty {
                     common::world::TileType::Grass => 0.0,
                     common::world::TileType::Sand => {
                         32.0 * ((1.0 / 16.0)
@@ -532,61 +551,69 @@ impl App {
                     }
                 };
 
-                let offsety = 0.0;
+                let offset_y = 0.0;
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32, 0.0, y as f32),
+                    position: glam::vec3(chunk_x as f32, 0.0, chunk_y as f32),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx, offsety),
+                    uv: glam::vec2(offset_x, offset_y),
                 });
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32),
+                    position: glam::vec3(chunk_x as f32 + 1.0, 0.0, chunk_y as f32),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx + size, offsety),
+                    uv: glam::vec2(offset_x + size, offset_y),
                 });
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32, 0.0, y as f32 + 1.0),
+                    position: glam::vec3(chunk_x as f32, 0.0, chunk_y as f32 + 1.0),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx, offsety + size),
+                    uv: glam::vec2(offset_x, offset_y + size),
                 });
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32),
+                    position: glam::vec3(chunk_x as f32 + 1.0, 0.0, chunk_y as f32),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx + size, offsety),
+                    uv: glam::vec2(offset_x + size, offset_y),
                 });
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32, 0.0, y as f32 + 1.0),
+                    position: glam::vec3(chunk_x as f32, 0.0, chunk_y as f32 + 1.0),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx, offsety + size),
+                    uv: glam::vec2(offset_x, offset_y + size),
                 });
 
                 vertices.push(Vertex {
-                    position: glam::vec3(x as f32 + 1.0, 0.0, y as f32 + 1.0),
+                    position: glam::vec3(chunk_x as f32 + 1.0, 0.0, chunk_y as f32 + 1.0),
                     color: glam::vec3(1.0, 1.0, 1.0),
                     normal: glam::vec3(0.0, 0.0, 0.0),
-                    uv: glam::vec2(offsetx + size, offsety + size),
+                    uv: glam::vec2(offset_x + size, offset_y + size),
                 });
             }
         }
 
         let model = Model::new(self.device.clone(), &vertices, None)?;
 
-        let obj = GameObject::new(Some(model), None, None);
+        let obj = GameObject::new(
+            Some(model),
+            None,
+            Some(TransformComponent {
+                translation: glam::vec3(
+                    (chunk.position.x * common::world::CHUNK_SIZE) as f32,
+                    0.0,
+                    (chunk.position.y * common::world::CHUNK_SIZE) as f32,
+                ),
+                scale: glam::Vec3::ONE,
+                rotation: glam::Vec3::ZERO,
+            }),
+        );
 
         let id = obj.id;
-
-        if let Some(previous_world_id) = previous_world_id {
-            self.game_objects.remove(&previous_world_id);
-        }
 
         self.game_objects.insert(id, obj);
 

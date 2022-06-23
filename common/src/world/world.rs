@@ -4,7 +4,9 @@ use noise::{
     Perlin, Seedable,
 };
 
-use super::{Tile, TileType};
+use crate::Position;
+
+use super::{Chunk, Tile, TileType, CHUNK_SIZE};
 
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct Player {
@@ -14,36 +16,36 @@ pub struct Player {
 #[derive(Debug, Clone, Encode, Decode)]
 pub struct World {
     #[bincode(with_serde)]
-    pub tiles: ndarray::Array2<Tile>,
+    pub chunks: ndarray::Array2<Chunk>,
+
     pub width: usize,
     pub height: usize,
 }
 
 impl World {
     pub fn new(width: usize, height: usize) -> Self {
-        let mut tiles = ndarray::Array2::from_elem(
-            (width, height),
-            Tile {
-                ty: TileType::Grass,
-            },
-        );
+        let mut chunks =
+            ndarray::Array2::from_shape_fn((width, height), |(x, y)| Chunk::new(Position { x, y }));
 
         let perlin = Perlin::default().set_seed(rand::random());
 
         let map = PlaneMapBuilder::new(&perlin)
-            .set_size(width, height)
-            .set_x_bounds(-0.5, 0.5)
-            .set_y_bounds(-0.5, 0.5)
+            .set_size(width * CHUNK_SIZE, height * CHUNK_SIZE)
+            .set_x_bounds(0.0, 1.0)
+            .set_y_bounds(0.0, 1.0)
             .build();
 
-        for ((x, y), tile) in tiles.indexed_iter_mut() {
-            if map.get_value(x, y) > 0.1 {
-                tile.ty = TileType::Sand;
+        for ((chunk_x, chunk_y), chunk) in chunks.indexed_iter_mut() {
+            for ((tile_x, tile_y), tile) in chunk.tiles.indexed_iter_mut() {
+                if map.get_value(chunk_x * CHUNK_SIZE + tile_x, chunk_y * CHUNK_SIZE + tile_y) > 0.2 {
+                    tile.ty = TileType::Sand;
+                }
             }
         }
 
         Self {
-            tiles,
+            chunks,
+
             width,
             height,
         }
